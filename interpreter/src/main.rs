@@ -1,6 +1,13 @@
+use std::io::Read;
+
 fn main() -> std::io::Result<()> {
     let file_name = std::env::args().nth(1).unwrap();
     let source = std::fs::read(&file_name)?;
+
+    let source: Vec<u8> = source
+        .into_iter()
+        .filter(|b| [b'+', b'-', b'.', b',', b'>', b'<', b'[', b']'].contains(b))
+        .collect();
 
     let mut pointer = 0;
     let mut program_counter = 0;
@@ -10,10 +17,7 @@ fn main() -> std::io::Result<()> {
             b'+' => memory[pointer] = memory[pointer].wrapping_add(1),
             b'-' => memory[pointer] = memory[pointer].wrapping_sub(1),
             b'.' => print!("{}", memory[pointer] as char),
-            b',' => {
-                use std::io::Read;
-                std::io::stdin().read_exact(&mut memory[pointer..pointer + 1])?
-            }
+            b',' => std::io::stdin().read_exact(&mut memory[pointer..pointer + 1])?,
             b'>' => pointer = (pointer + 1) % memory.len(),
             b'<' => pointer = (pointer + memory.len() - 1) % memory.len(),
             b'[' => {
@@ -56,7 +60,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
             }
-            _ => {} // do nothing, its only a comment
+            _ => unreachable!(),
         }
         program_counter += 1;
 
