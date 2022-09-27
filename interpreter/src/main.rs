@@ -45,6 +45,7 @@ impl Program {
 
     fn run(&mut self) -> std::io::Result<()> {
         let mut stdout = std::io::stdout().lock();
+        let mut stdin = std::io::stdin().lock();
         'program: loop {
             use Instruction::*;
             match self.instructions[self.program_counter] {
@@ -55,7 +56,13 @@ impl Program {
                     stdout.flush()?;
                 }
                 Input => {
-                    std::io::stdin().read_exact(&mut self.memory[self.pointer..self.pointer + 1])?
+                    let err = stdin.read_exact(&mut self.memory[self.pointer..self.pointer + 1]);
+                    match err.as_ref().map_err(|e| e.kind()) {
+                        Err(std::io::ErrorKind::UnexpectedEof) => {
+                            self.memory[self.pointer] = 0;
+                        }
+                        _ => err?,
+                    }
                 }
                 MoveRight => self.pointer = (self.pointer + 1) % self.memory.len(),
                 MoveLeft => {
