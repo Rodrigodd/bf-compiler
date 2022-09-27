@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Instruction {
@@ -44,12 +44,16 @@ impl Program {
     }
 
     fn run(&mut self) -> std::io::Result<()> {
+        let mut stdout = std::io::stdout().lock();
         'program: loop {
             use Instruction::*;
             match self.instructions[self.program_counter] {
                 Increase => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(1),
                 Decrease => self.memory[self.pointer] = self.memory[self.pointer].wrapping_sub(1),
-                Output => print!("{}", self.memory[self.pointer] as char),
+                Output => {
+                    stdout.write_all(&self.memory[self.pointer..self.pointer + 1])?;
+                    stdout.flush()?;
+                }
                 Input => {
                     std::io::stdin().read_exact(&mut self.memory[self.pointer..self.pointer + 1])?
                 }
