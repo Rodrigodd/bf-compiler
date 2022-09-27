@@ -1,4 +1,7 @@
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    process::ExitCode,
+};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Instruction {
@@ -123,9 +126,26 @@ impl Program {
     }
 }
 
-fn main() -> std::io::Result<()> {
-    let file_name = std::env::args().nth(1).unwrap();
-    let source = std::fs::read(&file_name)?;
+fn main() -> ExitCode {
+    let mut args = std::env::args();
+    if args.len() != 2 {
+        eprintln!("expected a single file path as argument");
+        return ExitCode::from(1);
+    }
 
-    Program::new(&source).run()
+    let file_name = args.nth(1).unwrap();
+    let source = match std::fs::read(&file_name) {
+        Ok(x) => x,
+        Err(err) => {
+            eprintln!("Error reading '{}': {}", file_name, err);
+            return ExitCode::from(2);
+        }
+    };
+
+    let err = Program::new(&source).run();
+    if let Err(err) = err {
+        eprintln!("IO error: {}", err);
+    }
+
+    ExitCode::from(0)
 }
