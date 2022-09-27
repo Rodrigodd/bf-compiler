@@ -52,8 +52,12 @@ impl Program {
                 Increase => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(1),
                 Decrease => self.memory[self.pointer] = self.memory[self.pointer].wrapping_sub(1),
                 Output => {
-                    stdout.write_all(&self.memory[self.pointer..self.pointer + 1])?;
-                    stdout.flush()?;
+                    let value = self.memory[self.pointer];
+                    // Writing a non-UTF-8 byte sequence on Windows error out.
+                    if !cfg!(target_os = "windows") || value < 128 {
+                        stdout.write_all(&[value])?;
+                        stdout.flush()?;
+                    }
                 }
                 Input => {
                     let err = stdin.read_exact(&mut self.memory[self.pointer..self.pointer + 1]);
