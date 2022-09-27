@@ -62,7 +62,7 @@ impl Program {
                         stdout.flush()?;
                     }
                 }
-                Input => {
+                Input => loop {
                     let err = stdin.read_exact(&mut self.memory[self.pointer..self.pointer + 1]);
                     match err.as_ref().map_err(|e| e.kind()) {
                         Err(std::io::ErrorKind::UnexpectedEof) => {
@@ -70,7 +70,11 @@ impl Program {
                         }
                         _ => err?,
                     }
-                }
+                    if cfg!(target_os = "windows") && self.memory[self.pointer] == b'\r' {
+                        continue;
+                    }
+                    break;
+                },
                 MoveRight => self.pointer = (self.pointer + 1) % self.memory.len(),
                 MoveLeft => {
                     self.pointer = (self.pointer + self.memory.len() - 1) % self.memory.len()
