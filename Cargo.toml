@@ -1,2 +1,2 @@
 [workspace]
-members = ["interpreter"]
+members = ["interpreter", "optimized"]

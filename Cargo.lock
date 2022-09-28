@@ -5,3 +5,7 @@ version = 3
 [[package]]
 name = "bf-interpreter"
 version = "0.1.0"
+
+[[package]]
+name = "bf-optimized"
+version = "0.1.0"
