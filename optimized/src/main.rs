@@ -5,10 +5,9 @@ use std::{
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Instruction {
-    Increase,
-    Decrease,
     MoveRight,
     MoveLeft,
+    Add(u8),
     Input,
     Output,
     JumpRight(usize),
@@ -30,8 +29,14 @@ impl Program {
 
         for b in source {
             let instr = match b {
-                b'+' => Instruction::Increase,
-                b'-' => Instruction::Decrease,
+                b'+' | b'-' => {
+                    let inc = if *b == b'+' { 1 } else { 1u8.wrapping_neg() };
+                    if let Some(Instruction::Add(value)) = instructions.last_mut() {
+                        *value = value.wrapping_add(inc);
+                        continue;
+                    }
+                    Instruction::Add(inc)
+                }
                 b'.' => Instruction::Output,
                 b',' => Instruction::Input,
                 b'>' => Instruction::MoveRight,
@@ -75,8 +80,7 @@ impl Program {
         'program: loop {
             use Instruction::*;
             match self.instructions[self.program_counter] {
-                Increase => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(1),
-                Decrease => self.memory[self.pointer] = self.memory[self.pointer].wrapping_sub(1),
+                Add(n) => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(n),
                 Output => {
                     let value = self.memory[self.pointer];
                     // Writing a non-UTF-8 byte sequence on Windows error out.
