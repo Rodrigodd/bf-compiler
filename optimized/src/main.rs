@@ -5,9 +5,8 @@ use std::{
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Instruction {
-    MoveRight,
-    MoveLeft,
     Add(u8),
+    Move(isize),
     Input,
     Output,
     JumpRight(usize),
@@ -39,8 +38,14 @@ impl Program {
                 }
                 b'.' => Instruction::Output,
                 b',' => Instruction::Input,
-                b'>' => Instruction::MoveRight,
-                b'<' => Instruction::MoveLeft,
+                b'>' | b'<' => {
+                    let inc = if *b == b'>' { 1 } else { -1 };
+                    if let Some(Instruction::Move(value)) = instructions.last_mut() {
+                        *value += inc;
+                        continue;
+                    }
+                    Instruction::Move(inc)
+                }
                 b'[' => {
                     let curr_address = instructions.len();
                     bracket_stack.push(curr_address);
@@ -102,9 +107,10 @@ impl Program {
                     }
                     break;
                 },
-                MoveRight => self.pointer = (self.pointer + 1) % self.memory.len(),
-                MoveLeft => {
-                    self.pointer = (self.pointer + self.memory.len() - 1) % self.memory.len()
+                Move(n) => {
+                    let len = self.memory.len() as isize;
+                    let n = (len + n % len) as usize;
+                    self.pointer = (self.pointer + n) % len as usize;
                 }
                 JumpRight(pair_address) => {
                     if self.memory[self.pointer] == 0 {
