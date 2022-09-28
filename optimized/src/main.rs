@@ -11,9 +11,11 @@ enum Instruction {
     MoveLeft,
     Input,
     Output,
-    JumpRight,
-    JumpLeft,
+    JumpRight(usize),
+    JumpLeft(usize),
 }
+
+struct UnbalancedBrackets(char, usize);
 
 struct Program {
     program_counter: usize,
@@ -22,28 +24,49 @@ struct Program {
     memory: [u8; 30_000],
 }
 impl Program {
-    fn new(source: &[u8]) -> Program {
-        let instructions: Vec<Instruction> = source
-            .iter()
-            .filter_map(|b| match b {
-                b'+' => Some(Instruction::Increase),
-                b'-' => Some(Instruction::Decrease),
-                b'.' => Some(Instruction::Output),
-                b',' => Some(Instruction::Input),
-                b'>' => Some(Instruction::MoveRight),
-                b'<' => Some(Instruction::MoveLeft),
-                b'[' => Some(Instruction::JumpRight),
-                b']' => Some(Instruction::JumpLeft),
-                _ => None,
-            })
-            .collect();
+    fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
+        let mut instructions = Vec::new();
+        let mut bracket_stack = Vec::new();
 
-        Program {
+        for b in source {
+            let instr = match b {
+                b'+' => Instruction::Increase,
+                b'-' => Instruction::Decrease,
+                b'.' => Instruction::Output,
+                b',' => Instruction::Input,
+                b'>' => Instruction::MoveRight,
+                b'<' => Instruction::MoveLeft,
+                b'[' => {
+                    let curr_address = instructions.len();
+                    bracket_stack.push(curr_address);
+                    // will be fixup at the pair ']'.
+                    Instruction::JumpRight(0)
+                }
+                b']' => {
+                    let curr_address = instructions.len();
+                    match bracket_stack.pop() {
+                        Some(pair_address) => {
+                            instructions[pair_address] = Instruction::JumpRight(curr_address);
+                            Instruction::JumpLeft(pair_address)
+                        }
+                        None => return Err(UnbalancedBrackets(']', curr_address)),
+                    }
+                }
+                _ => continue,
+            };
+            instructions.push(instr);
+        }
+
+        if let Some(unpaired_bracket) = bracket_stack.pop() {
+            return Err(UnbalancedBrackets('[', unpaired_bracket));
+        }
+
+        Ok(Program {
             program_counter: 0,
             pointer: 0,
             instructions,
             memory: [0; 30_000],
-        }
+        })
     }
 
     fn run(&mut self) -> std::io::Result<()> {
@@ -79,44 +102,14 @@ impl Program {
                 MoveLeft => {
                     self.pointer = (self.pointer + self.memory.len() - 1) % self.memory.len()
                 }
-                JumpRight => {
+                JumpRight(pair_address) => {
                     if self.memory[self.pointer] == 0 {
-                        let mut deep = 1;
-                        loop {
-                            if self.program_counter + 1 == self.instructions.len() {
-                                break 'program;
-                            }
-                            self.program_counter += 1;
-                            if self.instructions[self.program_counter] == JumpRight {
-                                deep += 1;
-                            }
-                            if self.instructions[self.program_counter] == JumpLeft {
-                                deep -= 1;
-                            }
-                            if deep == 0 {
-                                break;
-                            }
-                        }
+                        self.program_counter = pair_address;
                     }
                 }
-                JumpLeft => {
+                JumpLeft(pair_address) => {
                     if self.memory[self.pointer] != 0 {
-                        let mut deep = 1;
-                        loop {
-                            if self.program_counter == 0 {
-                                break 'program;
-                            }
-                            self.program_counter -= 1;
-                            if self.instructions[self.program_counter] == JumpLeft {
-                                deep += 1;
-                            }
-                            if self.instructions[self.program_counter] == JumpRight {
-                                deep -= 1;
-                            }
-                            if deep == 0 {
-                                break;
-                            }
-                        }
+                        self.program_counter = pair_address;
                     }
                 }
             }
@@ -146,8 +139,18 @@ fn main() -> ExitCode {
         }
     };
 
-    let err = Program::new(&source).run();
-    if let Err(err) = err {
+    let mut program = match Program::new(&source) {
+        Ok(x) => x,
+        Err(UnbalancedBrackets(c, address)) => {
+            eprintln!(
+                "Error parsing file: didn't found pair for `{}` at instruction index {}",
+                c, address
+            );
+            return ExitCode::from(3);
+        }
+    };
+
+    if let Err(err) = program.run() {
         eprintln!("IO error: {}", err);
     }
 
