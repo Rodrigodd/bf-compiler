@@ -15,11 +15,26 @@ enum Instruction {
     JumpLeft,
 }
 
+#[derive(Default, Debug)]
+#[cfg(feature = "profile")]
+struct Profile {
+    inc: u64,
+    dec: u64,
+    movr: u64,
+    movl: u64,
+    jr: u64,
+    jl: u64,
+    inp: u64,
+    out: u64,
+}
+
 struct Program {
     program_counter: usize,
     pointer: usize,
     instructions: Vec<Instruction>,
     memory: [u8; 30_000],
+    #[cfg(feature = "profile")]
+    profile: Profile,
 }
 impl Program {
     fn new(source: &[u8]) -> Program {
@@ -43,6 +58,8 @@ impl Program {
             pointer: 0,
             instructions,
             memory: [0; 30_000],
+            #[cfg(feature = "profile")]
+            profile: Profile::default(),
         }
     }
 
@@ -51,6 +68,21 @@ impl Program {
         let mut stdin = std::io::stdin().lock();
         'program: loop {
             use Instruction::*;
+
+            #[cfg(feature = "profile")]
+            {
+                match self.instructions[self.program_counter] {
+                    Increase => self.profile.inc += 1,
+                    Decrease => self.profile.dec += 1,
+                    Output => self.profile.out += 1,
+                    Input => self.profile.inp += 1,
+                    MoveRight => self.profile.movr += 1,
+                    MoveLeft => self.profile.movl += 1,
+                    JumpRight => self.profile.jr += 1,
+                    JumpLeft => self.profile.jl += 1,
+                }
+            }
+
             match self.instructions[self.program_counter] {
                 Increase => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(1),
                 Decrease => self.memory[self.pointer] = self.memory[self.pointer].wrapping_sub(1),
@@ -146,9 +178,15 @@ fn main() -> ExitCode {
         }
     };
 
-    let err = Program::new(&source).run();
-    if let Err(err) = err {
+    let mut program = Program::new(&source);
+
+    if let Err(err) = program.run() {
         eprintln!("IO error: {}", err);
+    }
+
+    #[cfg(feature = "profile")]
+    {
+        dbg!(program.profile);
     }
 
     ExitCode::from(0)

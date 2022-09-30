@@ -15,11 +15,24 @@ enum Instruction {
 
 struct UnbalancedBrackets(char, usize);
 
+#[derive(Default, Debug)]
+#[cfg(feature = "profile")]
+struct Profile {
+    add: u64,
+    mov: u64,
+    jr: u64,
+    jl: u64,
+    inp: u64,
+    out: u64,
+}
+
 struct Program {
     program_counter: usize,
     pointer: usize,
     instructions: Vec<Instruction>,
     memory: [u8; 30_000],
+    #[cfg(feature = "profile")]
+    profile: Profile,
 }
 impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
@@ -76,6 +89,8 @@ impl Program {
             pointer: 0,
             instructions,
             memory: [0; 30_000],
+            #[cfg(feature = "profile")]
+            profile: Profile::default(),
         })
     }
 
@@ -84,6 +99,19 @@ impl Program {
         let mut stdin = std::io::stdin().lock();
         'program: loop {
             use Instruction::*;
+
+            #[cfg(feature = "profile")]
+            {
+                match self.instructions[self.program_counter] {
+                    Add(_) => self.profile.add += 1,
+                    Output => self.profile.out += 1,
+                    Input => self.profile.inp += 1,
+                    Move(_) => self.profile.mov += 1,
+                    JumpRight(_) => self.profile.jr += 1,
+                    JumpLeft(_) => self.profile.jl += 1,
+                }
+            }
+
             match self.instructions[self.program_counter] {
                 Add(n) => self.memory[self.pointer] = self.memory[self.pointer].wrapping_add(n),
                 Output => {
@@ -162,6 +190,11 @@ fn main() -> ExitCode {
 
     if let Err(err) = program.run() {
         eprintln!("IO error: {}", err);
+    }
+
+    #[cfg(feature = "profile")]
+    {
+        dbg!(program.profile);
     }
 
     ExitCode::from(0)
