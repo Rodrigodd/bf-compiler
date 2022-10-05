@@ -24,6 +24,7 @@ struct Profile {
     jl: u64,
     inp: u64,
     out: u64,
+    loops: std::collections::HashMap<std::ops::Range<usize>, usize>,
 }
 
 struct Program {
@@ -108,7 +109,14 @@ impl Program {
                     Input => self.profile.inp += 1,
                     Move(_) => self.profile.mov += 1,
                     JumpRight(_) => self.profile.jr += 1,
-                    JumpLeft(_) => self.profile.jl += 1,
+                    JumpLeft(pair) => {
+                        self.profile.jl += 1;
+                        *self
+                            .profile
+                            .loops
+                            .entry(pair..self.program_counter + 1)
+                            .or_default() += 1;
+                    }
                 }
             }
 
@@ -194,7 +202,67 @@ fn main() -> ExitCode {
 
     #[cfg(feature = "profile")]
     {
-        dbg!(program.profile);
+        let profile = std::mem::take(&mut program.profile);
+        println!("profile:");
+        println!(" +: {}", profile.add);
+        println!(" >: {}", profile.mov);
+        println!(" [: {}", profile.jr);
+        println!(" ]: {}", profile.jl);
+        println!(" .: {}", profile.out);
+        println!(" ,: {}", profile.inp);
+        println!("loops:");
+
+        let to_string = |range: std::ops::Range<usize>| -> String {
+            program.instructions[range]
+                .iter()
+                .map(|x| match x {
+                    Instruction::Add(n) => {
+                        if *n >= 128 {
+                            format!("-{}", n.wrapping_neg())
+                        } else {
+                            format!("+{}", n)
+                        }
+                    }
+                    Instruction::Move(n) => {
+                        if *n < 0 {
+                            format!("<{}", -n)
+                        } else {
+                            format!(">{}", n)
+                        }
+                    }
+                    Instruction::Input => ",".to_string(),
+                    Instruction::Output => ".".to_string(),
+                    Instruction::JumpRight(_) => "[".to_string(),
+                    Instruction::JumpLeft(_) => "]".to_string(),
+                })
+                .fold(String::new(), |a, b| a + &b)
+        };
+
+        let mut loops: Vec<_> = profile
+            .loops
+            .into_iter()
+            .map(|(range, count)| (to_string(range), count))
+            .collect();
+
+        // dedup identical code
+
+        loops.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for i in 1..loops.len() {
+            if loops[i - 1].0 == loops[i].0 {
+                loops[i].1 += loops[i - 1].1;
+                loops[i - 1].1 = 0; // mark to remove
+            }
+        }
+
+        loops.retain(|x| x.1 > 0);
+
+        // sort by count
+        loops.sort_by_key(|x| x.1);
+
+        for (code, count) in loops.into_iter().rev().take(20) {
+            println!("{:10}: {}", count, code);
+        }
     }
 
     ExitCode::from(0)
