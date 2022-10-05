@@ -12,6 +12,7 @@ enum Instruction {
     JumpRight(usize),
     JumpLeft(usize),
     Clear,
+    AddTo(isize),
 }
 
 struct UnbalancedBrackets(char, usize);
@@ -26,6 +27,7 @@ struct Profile {
     inp: u64,
     out: u64,
     clear: u64,
+    addto: u64,
     loops: std::collections::HashMap<std::ops::Range<usize>, usize>,
 }
 
@@ -82,6 +84,13 @@ impl Program {
                                     instructions.drain(len - 2..);
                                     Instruction::Clear
                                 }
+                                &[.., JumpRight(_), Add(255), Move(x), Add(1), Move(y)]
+                                    if x == -y =>
+                                {
+                                    let len = instructions.len();
+                                    instructions.drain(len - 5..);
+                                    Instruction::AddTo(x)
+                                }
                                 _ => Instruction::JumpLeft(pair_address),
                             }
                         }
@@ -130,6 +139,7 @@ impl Program {
                             .or_default() += 1;
                     }
                     Clear => self.profile.clear += 1,
+                    AddTo(_) => self.profile.addto += 1,
                 }
             }
 
@@ -172,6 +182,14 @@ impl Program {
                     }
                 }
                 Clear => self.memory[self.pointer] = 0,
+                AddTo(n) => {
+                    let len = self.memory.len() as isize;
+                    let n = (len + n % len) as usize;
+                    let to = (self.pointer + n) % len as usize;
+
+                    self.memory[to] = self.memory[to].wrapping_add(self.memory[self.pointer]);
+                    self.memory[self.pointer] = 0
+                }
             }
             self.program_counter += 1;
 
@@ -225,6 +243,7 @@ fn main() -> ExitCode {
         println!(" .: {}", profile.out);
         println!(" ,: {}", profile.inp);
         println!(" x: {}", profile.clear);
+        println!("+>: {}", profile.addto);
         println!("loops:");
 
         let to_string = |range: std::ops::Range<usize>| -> String {
@@ -250,6 +269,13 @@ fn main() -> ExitCode {
                     Instruction::JumpRight(_) => "[".to_string(),
                     Instruction::JumpLeft(_) => "]".to_string(),
                     Instruction::Clear => "x".to_string(),
+                    Instruction::AddTo(n) => {
+                        if *n < 0 {
+                            format!("+<{}", -n)
+                        } else {
+                            format!("+>{}", n)
+                        }
+                    }
                 })
                 .fold(String::new(), |a, b| a + &b)
         };
