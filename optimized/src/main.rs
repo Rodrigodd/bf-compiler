@@ -11,6 +11,7 @@ enum Instruction {
     Output,
     JumpRight(usize),
     JumpLeft(usize),
+    Clear,
 }
 
 struct UnbalancedBrackets(char, usize);
@@ -24,6 +25,7 @@ struct Profile {
     jl: u64,
     inp: u64,
     out: u64,
+    clear: u64,
     loops: std::collections::HashMap<std::ops::Range<usize>, usize>,
 }
 
@@ -71,7 +73,17 @@ impl Program {
                     match bracket_stack.pop() {
                         Some(pair_address) => {
                             instructions[pair_address] = Instruction::JumpRight(curr_address);
-                            Instruction::JumpLeft(pair_address)
+
+                            use Instruction::*;
+                            match instructions.as_slice() {
+                                // could enter a infinite loop if n is even.
+                                [.., JumpRight(_), Add(n)] if n % 2 == 1 => {
+                                    let len = instructions.len();
+                                    instructions.drain(len - 2..);
+                                    Instruction::Clear
+                                }
+                                _ => Instruction::JumpLeft(pair_address),
+                            }
                         }
                         None => return Err(UnbalancedBrackets(']', curr_address)),
                     }
@@ -117,6 +129,7 @@ impl Program {
                             .entry(pair..self.program_counter + 1)
                             .or_default() += 1;
                     }
+                    Clear => self.profile.clear += 1,
                 }
             }
 
@@ -158,6 +171,7 @@ impl Program {
                         self.program_counter = pair_address;
                     }
                 }
+                Clear => self.memory[self.pointer] = 0,
             }
             self.program_counter += 1;
 
@@ -210,6 +224,7 @@ fn main() -> ExitCode {
         println!(" ]: {}", profile.jl);
         println!(" .: {}", profile.out);
         println!(" ,: {}", profile.inp);
+        println!(" x: {}", profile.clear);
         println!("loops:");
 
         let to_string = |range: std::ops::Range<usize>| -> String {
@@ -234,6 +249,7 @@ fn main() -> ExitCode {
                     Instruction::Output => ".".to_string(),
                     Instruction::JumpRight(_) => "[".to_string(),
                     Instruction::JumpLeft(_) => "]".to_string(),
+                    Instruction::Clear => "x".to_string(),
                 })
                 .fold(String::new(), |a, b| a + &b)
         };
