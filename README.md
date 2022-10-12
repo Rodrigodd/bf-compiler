@@ -6,3 +6,7 @@ rewritten in Rust.
 
 [eli]: https://eli.thegreenplace.net/2017/adventures-in-jit-compilation-part-1-an-interpreter.
 [brainfuck]: https://esolangs.org/wiki/Brainfuck
+
+## Benchmarks
+
+Benchmarks result can be found in [benchmark.adoc].
