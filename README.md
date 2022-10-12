@@ -9,4 +9,4 @@ rewritten in Rust.
 
 ## Benchmarks
 
-Benchmarks result can be found in [benchmark.adoc].
+Benchmarks result can be found in [benchmark.adoc](benchmark.adoc).
