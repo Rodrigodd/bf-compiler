@@ -37,7 +37,7 @@ struct Program {
     program_counter: usize,
     pointer: usize,
     instructions: Vec<Instruction>,
-    memory: [u8; 30_000],
+    memory: [u8; 1 << 15],
     #[cfg(feature = "profile")]
     profile: Profile,
 }
@@ -117,7 +117,7 @@ impl Program {
             program_counter: 0,
             pointer: 0,
             instructions,
-            memory: [0; 30_000],
+            memory: [0; 1 << 15],
             #[cfg(feature = "profile")]
             profile: Profile::default(),
         })
@@ -128,6 +128,10 @@ impl Program {
         let mut stdin = std::io::stdin().lock();
         'program: loop {
             use Instruction::*;
+
+            if self.pointer >= self.memory.len() {
+                unsafe { std::hint::unreachable_unchecked() } 
+            }
 
             #[cfg(feature = "profile")]
             {
@@ -158,7 +162,7 @@ impl Program {
                     // Writing a non-UTF-8 byte sequence on Windows error out.
                     if !cfg!(target_os = "windows") || value < 128 {
                         stdout.write_all(&[value])?;
-                        stdout.flush()?;
+                        // stdout.flush()?;
                     }
                 }
                 Input => loop {
@@ -195,6 +199,10 @@ impl Program {
                     let n = (len + n % len) as usize;
                     let to = (self.pointer + n) % len as usize;
 
+                    if to >= self.memory.len() {
+                        unsafe { std::hint::unreachable_unchecked() } 
+                    }
+
                     self.memory[to] = self.memory[to].wrapping_add(self.memory[self.pointer]);
                     self.memory[self.pointer] = 0
                 }
@@ -202,6 +210,10 @@ impl Program {
                     let len = self.memory.len() as isize;
                     let n = (len + n % len) as usize;
                     loop {
+                        if self.pointer >= self.memory.len() {
+                            unsafe { std::hint::unreachable_unchecked() } 
+                        }
+
                         if self.memory[self.pointer] == 0 {
                             break;
                         }
