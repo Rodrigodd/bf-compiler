@@ -3,10 +3,10 @@
 :f: programs/factor.bf
 :m: programs/mandelbrot.bf
 
-These are the execution time for the link:{f}[factor.bf] and link:{m}[mandel.bf]
-programs.
+These are the execution time for the link:{f}[factor.bf] (with input 179424691)
+and link:{m}[mandel.bf] programs.
 
-Run on a Windows 10 notebook, under WSL, with a Intel Core CPU i5-4200U
+Ran on a Windows 10 notebook, under WSL, with a Intel Core CPU i5-4200U
 1.60GHZ.
 
 [options="header"]
