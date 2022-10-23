@@ -123,14 +123,20 @@ impl Program {
         })
     }
 
+    #[inline(never)]
     fn run(&mut self) -> std::io::Result<()> {
         let mut stdout = std::io::stdout().lock();
         let mut stdin = std::io::stdin().lock();
+        self.program_counter = 0;
+        self.pointer = 0;
         'program: loop {
             use Instruction::*;
 
             if self.pointer >= self.memory.len() {
-                unsafe { std::hint::unreachable_unchecked() } 
+                unsafe { std::hint::unreachable_unchecked() }
+            }
+            if self.program_counter >= self.instructions.len() {
+                unsafe { std::hint::unreachable_unchecked() }
             }
 
             #[cfg(feature = "profile")]
@@ -166,13 +172,15 @@ impl Program {
                     }
                 }
                 Input => loop {
-                    let err = stdin.read_exact(&mut self.memory[self.pointer..self.pointer + 1]);
+                    let mut value = 0;
+                    let err = stdin.read_exact(std::slice::from_mut(&mut value));
                     match err.as_ref().map_err(|e| e.kind()) {
                         Err(std::io::ErrorKind::UnexpectedEof) => {
-                            self.memory[self.pointer] = 0;
+                            value = 0;
                         }
                         _ => err?,
                     }
+                    self.memory[self.pointer] = value;
                     if cfg!(target_os = "windows") && self.memory[self.pointer] == b'\r' {
                         continue;
                     }
@@ -200,7 +208,7 @@ impl Program {
                     let to = (self.pointer + n) % len as usize;
 
                     if to >= self.memory.len() {
-                        unsafe { std::hint::unreachable_unchecked() } 
+                        unsafe { std::hint::unreachable_unchecked() }
                     }
 
                     self.memory[to] = self.memory[to].wrapping_add(self.memory[self.pointer]);
@@ -211,7 +219,7 @@ impl Program {
                     let n = (len + n % len) as usize;
                     loop {
                         if self.pointer >= self.memory.len() {
-                            unsafe { std::hint::unreachable_unchecked() } 
+                            unsafe { std::hint::unreachable_unchecked() }
                         }
 
                         if self.memory[self.pointer] == 0 {
