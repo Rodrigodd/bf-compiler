@@ -63,9 +63,12 @@ impl Program {
         }
     }
 
+    #[inline(never)]
     fn run(&mut self) -> std::io::Result<()> {
         let mut stdout = std::io::stdout().lock();
         let mut stdin = std::io::stdin().lock();
+        self.pointer = 0;
+        self.program_counter = 0;
         'program: loop {
             use Instruction::*;
 
@@ -80,6 +83,17 @@ impl Program {
                     MoveLeft => self.profile.movl += 1,
                     JumpRight => self.profile.jr += 1,
                     JumpLeft => self.profile.jl += 1,
+                }
+            }
+
+            if self.pointer >= self.memory.len() {
+                unsafe {
+                    std::hint::unreachable_unchecked();
+                }
+            }
+            if self.program_counter >= self.instructions.len() {
+                unsafe {
+                    std::hint::unreachable_unchecked();
                 }
             }
 
@@ -98,7 +112,8 @@ impl Program {
                     let err = stdin.read_exact(&mut self.memory[self.pointer..self.pointer + 1]);
                     match err.as_ref().map_err(|e| e.kind()) {
                         Err(std::io::ErrorKind::UnexpectedEof) => {
-                            self.memory[self.pointer] = 0;
+                            let cell = unsafe { self.memory.get_unchecked_mut(self.pointer) };
+                            *cell = 0;
                         }
                         _ => err?,
                     }
@@ -118,11 +133,20 @@ impl Program {
                             if self.program_counter + 1 == self.instructions.len() {
                                 break 'program;
                             }
+
                             self.program_counter += 1;
-                            if self.instructions[self.program_counter] == JumpRight {
+                            if self.program_counter >= self.memory.len() {
+                                unsafe {
+                                    std::hint::unreachable_unchecked();
+                                }
+                            }
+
+                            let instr =
+                                unsafe { *self.instructions.get_unchecked(self.program_counter) };
+                            if instr == JumpRight {
                                 deep += 1;
                             }
-                            if self.instructions[self.program_counter] == JumpLeft {
+                            if instr == JumpLeft {
                                 deep -= 1;
                             }
                             if deep == 0 {
@@ -138,11 +162,20 @@ impl Program {
                             if self.program_counter == 0 {
                                 break 'program;
                             }
+
                             self.program_counter -= 1;
-                            if self.instructions[self.program_counter] == JumpLeft {
+                            if self.program_counter >= self.memory.len() {
+                                unsafe {
+                                    std::hint::unreachable_unchecked();
+                                }
+                            }
+
+                            let instr =
+                                unsafe { *self.instructions.get_unchecked(self.program_counter) };
+                            if instr == JumpLeft {
                                 deep += 1;
                             }
-                            if self.instructions[self.program_counter] == JumpRight {
+                            if instr == JumpRight {
                                 deep -= 1;
                             }
                             if deep == 0 {

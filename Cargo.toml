@@ -1,2 +1,5 @@
 [workspace]
 members = ["interpreter", "optimized"]
+
+[profile.release]
+panic = "abort"
