@@ -9,10 +9,10 @@ sets = [
     [1, 2],
     [1, 2, 3],
     [1, 2, 3, 4],
-    [1, 2, 3, 4, 5],
-    [1, 2, 5, 6],
-    [1, 2, 5, 6, 7],
-    [1, 2, 5, 7],
+    [1, 2, 4, 5],
+    [1, 2, 4, 5, 6],
+    [1, 2, 4, 5, 6, 7],
+    [1, 2, 4, 7],
     [1,2,3,4,5,6,7],
 ]
 
@@ -47,11 +47,11 @@ with plt.style.context('ggplot'), open('times/times_mean.csv', newline='') as cs
             bar = [float(factor), float(mandel)]
             w = width/len(bars)
             dx = w*i
-            rects.append(ax.bar(x - width/2 + dx, bar, w, label=label))
+            rects.append(ax.bar(x - width/2 + dx, bar, w, label=label, color=f'C{choosed[i]-1}'))
 
         # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('Scores')
-        ax.set_title('Scores by group and gender')
+        ax.set_ylabel('seconds')
+        # ax.set_title('Execution time by change')
         ax.set_xticks(x, labels)
         ax.legend()
 
