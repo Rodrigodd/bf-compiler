@@ -1,2 +1,2 @@
 [workspace]
-members = ["interpreter", "optimized"]
+members = ["interpreter", "optimized", "singlepass-jit"]

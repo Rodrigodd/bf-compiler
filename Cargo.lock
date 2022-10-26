@@ -9,3 +9,16 @@ version = "0.1.0"
 [[package]]
 name = "bf-optimized"
 version = "0.1.0"
+
+[[package]]
+name = "bf-singlepass-jit"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "libc"
+version = "0.2.135"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68783febc7782c6c5cb401fbda4de5a9898be1762314da0bb2c10ced61f18b0c"
