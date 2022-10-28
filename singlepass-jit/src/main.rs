@@ -1,22 +1,8 @@
-use std::io::Write;
 use std::process::ExitCode;
 
-use dynasm::dynasm;
+use dynasmrt::{dynasm, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembler};
 
 struct UnbalancedBrackets(char, usize);
-
-trait DynasmApi {
-    fn push_i8(&mut self, value: i8);
-    fn push_i32(&mut self, value: i32);
-}
-impl DynasmApi for Vec<u8> {
-    fn push_i8(&mut self, value: i8) {
-        self.push(value as u8)
-    }
-    fn push_i32(&mut self, value: i32) {
-        self.extend_from_slice(&value.to_le_bytes())
-    }
-}
 
 struct Program {
     code: Vec<u8>,
@@ -24,7 +10,7 @@ struct Program {
 }
 impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
-        let mut code = Vec::new();
+        let mut code: VecAssembler<X64Relocation> = VecAssembler::new(0);
 
         // r12 will be the adress of `memory`
         // r13 will be the value of `pointer`
@@ -80,44 +66,36 @@ impl Program {
                     ; cmove r13, rax
                 },
                 b'[' => {
-                    // note that the offset of 0 is a dummy value,
-                    // it will be fixed in the pair `]`
-                    dynasm! {code
+                    let start_label = code.new_dynamic_label();
+                    let end_label = code.new_dynamic_label();
+                    dynasm! { code
                         ; .arch x64
                         ; cmp BYTE [r12+r13], 0
-                        ; je i32::max_value()
+                        ; je =>end_label
+                        ; =>start_label
                     };
 
-                    // push to the stack the byte index of the next instruction.
-                    bracket_stack.push(code.len() as u32);
+                    bracket_stack.push((start_label, end_label));
                 }
                 b']' => {
-                    let left = match bracket_stack.pop() {
-                        Some(x) => x as usize,
-                        None => return Err(UnbalancedBrackets(']', code.len())),
+                    let (start_label, end_label) = match bracket_stack.pop() {
+                        Some(x) => x,
+                        None => return Err(UnbalancedBrackets(']', code.offset().0)),
                     };
 
-                    dynasm! {code
+                    dynasm! { code
                         ; .arch x64
                         ; cmp BYTE [r12 + r13], 0
-                        ; jne i32::max_value()
+                        ; jne =>start_label
+                        ; => end_label
                     };
-
-                    // the byte index of the next instruction
-                    let right = code.len();
-
-                    let offset = right as i32 - left as i32;
-
-                    // fix relative jumps offsets
-                    code[left - 4..left].copy_from_slice(&offset.to_le_bytes());
-                    code[right - 4..right].copy_from_slice(&(-offset).to_le_bytes());
                 }
                 _ => continue,
             }
         }
 
         if !bracket_stack.is_empty() {
-            return Err(UnbalancedBrackets(']', code.len()));
+            return Err(UnbalancedBrackets(']', code.offset().0));
         }
 
         // when we push to the stack, we need to remeber
@@ -130,7 +108,7 @@ impl Program {
         }
 
         Ok(Program {
-            code,
+            code: code.finalize().unwrap(),
             memory: [0; 30_000],
         })
     }
