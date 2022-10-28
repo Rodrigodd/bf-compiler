@@ -1,7 +1,22 @@
 use std::io::Write;
 use std::process::ExitCode;
 
+use dynasm::dynasm;
+
 struct UnbalancedBrackets(char, usize);
+
+trait DynasmApi {
+    fn push_i8(&mut self, value: i8);
+    fn push_i32(&mut self, value: i32);
+}
+impl DynasmApi for Vec<u8> {
+    fn push_i8(&mut self, value: i8) {
+        self.push(value as u8)
+    }
+    fn push_i32(&mut self, value: i32) {
+        self.extend_from_slice(&value.to_le_bytes())
+    }
+}
 
 struct Program {
     code: Vec<u8>,
@@ -11,98 +26,67 @@ impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
         let mut code = Vec::new();
 
-        // ; r12 will be the adress of `memory`
-        // ; r13 will be the value of `pointer`
-        // ; r12 is got from argument 1 in `rdi`
-        // ; r13 is set to 0
-        // push r12
-        // push r13
-        // mov r12, rdi
-        // xor r13, r13
-        code.write_all(&[
-            0x41, 0x54, //
-            0x41, 0x55, //
-            0x49, 0x89, 0xfc, //
-            0x4d, 0x31, 0xed,
-        ])
-        .unwrap();
+        // r12 will be the adress of `memory`
+        // r13 will be the value of `pointer`
+        // r12 is got from argument 1 in `rdi`
+        // r13 is set to 0
+        dynasm! { code
+            ; .arch x64
+            ; push r12
+            ; push r13
+            ; mov r12, rdi
+            ; xor r13, r13
+        };
 
         let mut bracket_stack = Vec::new();
 
         for b in source {
             match b {
-                b'+' => {
-                    // add byte [r12 + r13], 1
-                    code.write_all(&[0x43, 0x80, 0x04, 0x2c, 0x01]).unwrap();
-                }
-                b'-' => {
-                    // add byte [r12 + r13], -1
-                    code.write_all(&[0x43, 0x80, 0x04, 0x2c, 0xff]).unwrap();
-                }
-                b'.' => {
-                    // mov rax, 1 ; write syscall
-                    // mov rdi, 1 ; stdout's file descriptor
-                    // lea rsi, [r12 + r13] ; buf address
-                    // mov rdx, 1           ; length
-                    // syscall
-                    code.write_all(&[
-                        0xb8, 0x01, 0x00, 0x00, 0x00, //
-                        0xbf, 0x01, 0x00, 0x00, 0x00, //
-                        0x4b, 0x8d, 0x34, 0x2c, //
-                        0xba, 0x01, 0x00, 0x00, 0x00, //
-                        0x0f, 0x05, //
-                    ])
-                    .unwrap();
-                }
-                b',' => {
-                    // mov rax, 0 ; read syscall
-                    // mov rdi, 0 ; stdin's file descriptor
-                    // lea rsi, [r12 + r13] ; buf address
-                    // mov rdx, 1           ; length
-                    // syscall
-                    code.write_all(&[
-                        0xb8, 0x00, 0x00, 0x00, 0x00, //
-                        0xbf, 0x00, 0x00, 0x00, 0x00, //
-                        0x4b, 0x8d, 0x34, 0x2c, //
-                        0xba, 0x01, 0x00, 0x00, 0x00, //
-                        0x0f, 0x05, //
-                    ])
-                    .unwrap();
-                }
-                b'<' => {
-                    // sub r13, 1
-                    // mov eax, 29999
-                    // cmovb r13, rax
-                    code.write_all(&[
-                        0x49, 0x83, 0xed, 0x01, //
-                        0xb8, 0x2f, 0x75, 0x00, 0x00, //
-                        0x4c, 0x0f, 0x42, 0xe8,
-                    ])
-                    .unwrap();
-                }
-                b'>' => {
-                    // add r13, 1
-                    // xor eax, eax
-                    // cmp r13, 30000
-                    // cmove r13, rax
-                    code.write_all(&[
-                        0x49, 0x83, 0xc5, 0x01, //
-                        0x31, 0xc0, //
-                        0x49, 0x81, 0xfd, 0x30, 0x75, 0x00, 0x00, //
-                        0x4c, 0x0f, 0x44, 0xe8,
-                    ])
-                    .unwrap();
-                }
+                b'+' => dynasm! { code
+                    ; .arch x64
+                    ; add BYTE [r12 + r13], 1
+                },
+                b'-' => dynasm! { code
+                    ; .arch x64
+                    ; add BYTE [r12 + r13], -1
+                },
+                b'.' => dynasm! { code
+                    ; .arch x64
+                    ; mov rax, 1 // write syscall
+                    ; mov rdi, 1 // stdout's file descriptor
+                    ; lea rsi, [r12 + r13] // buf address
+                    ; mov rdx, 1           // length
+                    ; syscall
+                },
+                b',' => dynasm! { code
+                    ; .arch x64
+                    ; mov rax, 0 // read syscall
+                    ; mov rdi, 0 // stdin's file descriptor
+                    ; lea rsi, [r12 + r13] // buf address
+                    ; mov rdx, 1           // length
+                    ; syscall
+                },
+                b'<' => dynasm! { code
+                    ; .arch x64
+                    ; sub r13, 1
+                    ; mov eax, 29999
+                    ; cmovb r13, rax
+                },
+                b'>' => dynasm! { code
+                    ; .arch x64
+                    ; add r13, 1
+                    ; xor eax, eax
+                    ; cmp r13, 30000
+                    ; cmove r13, rax
+                },
                 b'[' => {
-                    // ; note that the offset of 0 is a dummy value,
-                    // ; it will be fixed in the pair `]`
-                    // cmp byte [r12+r13], 0
-                    // je near .END
-                    code.write_all(&[
-                        0x43, 0x80, 0x3c, 0x2c, 0x00, //
-                        0x0f, 0x84, 0x00, 0x00, 0x00, 0x00,
-                    ])
-                    .unwrap();
+                    // note that the offset of 0 is a dummy value,
+                    // it will be fixed in the pair `]`
+                    dynasm! {code
+                        ; .arch x64
+                        ; cmp BYTE [r12+r13], 0
+                        ; je i32::max_value()
+                    };
 
                     // push to the stack the byte index of the next instruction.
                     bracket_stack.push(code.len() as u32);
@@ -113,13 +97,11 @@ impl Program {
                         None => return Err(UnbalancedBrackets(']', code.len())),
                     };
 
-                    // cmp byte [r12 + r13], 0
-                    // jne near .START
-                    code.write_all(&[
-                        0x43, 0x80, 0x3c, 0x2c, 0x00, //
-                        0x0f, 0x85, 0xf1, 0xff, 0xff, 0xff,
-                    ])
-                    .unwrap();
+                    dynasm! {code
+                        ; .arch x64
+                        ; cmp BYTE [r12 + r13], 0
+                        ; jne i32::max_value()
+                    };
 
                     // the byte index of the next instruction
                     let right = code.len();
@@ -138,17 +120,14 @@ impl Program {
             return Err(UnbalancedBrackets(']', code.len()));
         }
 
-        // ; when we push to the stack, we need to remeber
-        // ; to pop them in the opossite order.
-        // pop r13
-        // pop r12
-        // ret
-        code.write_all(&[
-            0x41, 0x5d, //
-            0x41, 0x5c, //
-            0xc3,
-        ])
-        .unwrap();
+        // when we push to the stack, we need to remeber
+        // to pop them in the opossite order.
+        dynasm! { code
+            ; .arch x64
+            ; pop r13
+            ; pop r12
+            ; ret
+        }
 
         Ok(Program {
             code,
