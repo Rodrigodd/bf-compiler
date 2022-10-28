@@ -7,4 +7,3 @@ edition = "2021"
 
 [dependencies]
 dynasmrt = "1.2.3"
-libc = "0.2.135"

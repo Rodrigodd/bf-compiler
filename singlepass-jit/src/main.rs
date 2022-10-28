@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+use dynasmrt::mmap::MutableBuffer;
 use dynasmrt::{dynasm, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembler};
 
 struct UnbalancedBrackets(char, usize);
@@ -114,41 +115,18 @@ impl Program {
     }
 
     fn run(&mut self) -> std::io::Result<()> {
+        let mut buffer = MutableBuffer::new(self.code.len()).unwrap();
+        buffer.set_len(self.code.len());
+
+        buffer.copy_from_slice(&self.code);
+
+        let buffer = buffer.make_exec().unwrap();
+
         unsafe {
-            let len = self.code.len();
-            let mem = libc::mmap(
-                std::ptr::null_mut(),
-                len,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-                -1,
-                0,
-            );
-
-            if mem == libc::MAP_FAILED {
-                panic!("mmap failed");
-            }
-
-            // SAFETY: mem is zero initalized by the mmap.
-            std::slice::from_raw_parts_mut(mem as *mut u8, len).copy_from_slice(&self.code);
-
-            // mem.as_ptr() is page aligned, because it is get from mmap.
-            let result = libc::mprotect(mem, len, libc::PROT_READ | libc::PROT_EXEC);
-
-            if result == -1 {
-                panic!("mprotect failed");
-            }
-
-            let code_fn: unsafe extern "sysv64" fn(*mut u8) = std::mem::transmute(mem);
-
+            let code_fn: unsafe extern "sysv64" fn(*mut u8) = std::mem::transmute(buffer.as_ptr());
             code_fn(self.memory.as_mut_ptr());
-
-            let result = libc::munmap(mem, len);
-
-            if result == -1 {
-                panic!("munmap failed");
-            }
         }
+
         Ok(())
     }
 }

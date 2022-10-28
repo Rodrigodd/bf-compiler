@@ -15,7 +15,6 @@ name = "bf-singlepass-jit"
 version = "0.1.0"
 dependencies = [
  "dynasmrt",
- "libc",
 ]
 
 [[package]]
