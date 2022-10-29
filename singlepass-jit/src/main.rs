@@ -1,3 +1,4 @@
+use std::io::{Read, Write};
 use std::process::ExitCode;
 
 use dynasmrt::mmap::MutableBuffer;
@@ -37,22 +38,26 @@ impl Program {
                     ; .arch x64
                     ; add BYTE [r12 + r13], -1
                 },
-                b'.' => dynasm! { code
-                    ; .arch x64
-                    ; mov rax, 1 // write syscall
-                    ; mov rdi, 1 // stdout's file descriptor
-                    ; lea rsi, [r12 + r13] // buf address
-                    ; mov rdx, 1           // length
-                    ; syscall
-                },
-                b',' => dynasm! { code
-                    ; .arch x64
-                    ; mov rax, 0 // read syscall
-                    ; mov rdi, 0 // stdin's file descriptor
-                    ; lea rsi, [r12 + r13] // buf address
-                    ; mov rdx, 1           // length
-                    ; syscall
-                },
+                b'.' => {
+                    dynasm! { code
+                        ; .arch x64
+                        ; mov rax, QWORD write as *const () as i64
+                        ; mov rdi, [r12 + r13] // cell value
+                        ; call rax
+                        ; cmp rax, 0
+                        ; jne ->exit
+                    }
+                }
+                b',' => {
+                    dynasm! { code
+                        ; .arch x64
+                        ; mov rax, QWORD read as *const () as i64
+                        ; lea rdi, [r12 + r13] // cell address
+                        ; call rax
+                        ; cmp rax, 0
+                        ; jne ->exit
+                    }
+                }
                 b'<' => dynasm! { code
                     ; .arch x64
                     ; sub r13, 1
@@ -103,6 +108,8 @@ impl Program {
         // to pop them in the opossite order.
         dynasm! { code
             ; .arch x64
+            ; xor rax, rax
+            ; ->exit:
             ; pop r13
             ; pop r12
             ; ret
@@ -123,11 +130,57 @@ impl Program {
         let buffer = buffer.make_exec().unwrap();
 
         unsafe {
-            let code_fn: unsafe extern "sysv64" fn(*mut u8) = std::mem::transmute(buffer.as_ptr());
-            code_fn(self.memory.as_mut_ptr());
+            let code_fn: unsafe extern "sysv64" fn(*mut u8) -> *mut std::io::Error =
+                std::mem::transmute(buffer.as_ptr());
+
+            let error = code_fn(self.memory.as_mut_ptr());
+
+            if !error.is_null() {
+                return Err(*Box::from_raw(error));
+            }
         }
 
         Ok(())
+    }
+}
+
+extern "sysv64" fn write(value: u8) -> *mut std::io::Error {
+    // Writing a non-UTF-8 byte sequence on Windows error out.
+    if cfg!(target_os = "windows") && value >= 128 {
+        return std::ptr::null_mut();
+    }
+
+    let mut stdout = std::io::stdout().lock();
+
+    let result = stdout.write_all(&[value]).and_then(|_| stdout.flush());
+
+    match result {
+        Err(err) => Box::leak(Box::new(err)) as *mut _,
+        _ => std::ptr::null_mut(),
+    }
+}
+
+unsafe extern "sysv64" fn read(buf: *mut u8) -> *mut std::io::Error {
+    let mut stdin = std::io::stdin().lock();
+    loop {
+        let mut value = 0;
+        let err = stdin.read_exact(std::slice::from_mut(&mut value));
+
+        if let Err(err) = err {
+            if err.kind() != std::io::ErrorKind::UnexpectedEof {
+                return Box::leak(Box::new(err));
+            }
+            value = 0;
+        }
+
+        // ignore CR from Window's CRLF
+        if cfg!(target_os = "windows") && value == b'\r' {
+            continue;
+        }
+
+        *buf = value;
+
+        return std::ptr::null_mut();
     }
 }
 
