@@ -20,6 +20,8 @@ impl Program {
         // r13 is set to 0
         dynasm! { code
             ; .arch x64
+            ; push rbp
+            ; mov rbp, rsp
             ; push r12
             ; push r13
             ; mov r12, rdi
@@ -112,6 +114,7 @@ impl Program {
             ; ->exit:
             ; pop r13
             ; pop r12
+            ; pop rbp
             ; ret
         }
 
