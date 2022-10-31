@@ -11,6 +11,13 @@ name = "bf-optimized"
 version = "0.1.0"
 
 [[package]]
+name = "bf-optimized-jit"
+version = "0.1.0"
+dependencies = [
+ "dynasmrt",
+]
+
+[[package]]
 name = "bf-singlepass-jit"
 version = "0.1.0"
 dependencies = [
