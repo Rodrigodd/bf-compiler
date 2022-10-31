@@ -4,6 +4,19 @@ use std::process::ExitCode;
 use dynasmrt::mmap::MutableBuffer;
 use dynasmrt::{dynasm, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembler};
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Instruction {
+    Add(u8),
+    Move(isize),
+    Input,
+    Output,
+    JumpRight,
+    JumpLeft,
+    Clear,
+    AddTo(isize),
+    MoveUntil(isize),
+}
+
 struct UnbalancedBrackets(char, usize);
 
 struct Program {
@@ -13,6 +26,56 @@ struct Program {
 impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
         let mut code: VecAssembler<X64Relocation> = VecAssembler::new(0);
+
+        let mut instructions = Vec::new();
+
+        for b in source {
+            let instr = match b {
+                b'+' | b'-' => {
+                    let inc = if *b == b'+' { 1 } else { 1u8.wrapping_neg() };
+                    if let Some(Instruction::Add(value)) = instructions.last_mut() {
+                        *value = value.wrapping_add(inc);
+                        continue;
+                    }
+                    Instruction::Add(inc)
+                }
+                b'.' => Instruction::Output,
+                b',' => Instruction::Input,
+                b'>' | b'<' => {
+                    let inc = if *b == b'>' { 1 } else { -1 };
+                    if let Some(Instruction::Move(value)) = instructions.last_mut() {
+                        *value += inc;
+                        continue;
+                    }
+                    Instruction::Move(inc)
+                }
+                b'[' => Instruction::JumpRight,
+                b']' => {
+                    use Instruction::*;
+                    match instructions.as_slice() {
+                        // could enter a infinite loop if n is even.
+                        [.., JumpRight, Add(n)] if n % 2 == 1 => {
+                            let len = instructions.len();
+                            instructions.drain(len - 2..);
+                            Instruction::Clear
+                        }
+                        &[.., JumpRight, Add(255), Move(x), Add(1), Move(y)] if x == -y => {
+                            let len = instructions.len();
+                            instructions.drain(len - 5..);
+                            Instruction::AddTo(x)
+                        }
+                        &[.., JumpRight, Move(n)] => {
+                            let len = instructions.len();
+                            instructions.drain(len - 2..);
+                            Instruction::MoveUntil(n)
+                        }
+                        _ => Instruction::JumpLeft,
+                    }
+                }
+                _ => continue,
+            };
+            instructions.push(instr);
+        }
 
         // r12 will be the adress of `memory`
         // r13 will be the value of `pointer`
@@ -30,17 +93,21 @@ impl Program {
 
         let mut bracket_stack = Vec::new();
 
-        for b in source {
-            match b {
-                b'+' => dynasm! { code
-                    ; .arch x64
-                    ; add BYTE [r12 + r13], 1
-                },
-                b'-' => dynasm! { code
-                    ; .arch x64
-                    ; add BYTE [r12 + r13], -1
-                },
-                b'.' => {
+        for instr in instructions.into_iter() {
+            match instr {
+                Instruction::Add(_) => todo!(),
+                Instruction::Move(_) => todo!(),
+                Instruction::Input => {
+                    dynasm! { code
+                        ; .arch x64
+                        ; mov rax, QWORD read as *const () as i64
+                        ; lea rdi, [r12 + r13] // cell address
+                        ; call rax
+                        ; cmp rax, 0
+                        ; jne ->exit
+                    }
+                }
+                Instruction::Output => {
                     dynasm! { code
                         ; .arch x64
                         ; mov rax, QWORD write as *const () as i64
@@ -50,31 +117,7 @@ impl Program {
                         ; jne ->exit
                     }
                 }
-                b',' => {
-                    dynasm! { code
-                        ; .arch x64
-                        ; mov rax, QWORD read as *const () as i64
-                        ; lea rdi, [r12 + r13] // cell address
-                        ; call rax
-                        ; cmp rax, 0
-                        ; jne ->exit
-                        ; ret
-                    }
-                }
-                b'<' => dynasm! { code
-                    ; .arch x64
-                    ; sub r13, 1
-                    ; mov eax, 29999
-                    ; cmovb r13, rax
-                },
-                b'>' => dynasm! { code
-                    ; .arch x64
-                    ; add r13, 1
-                    ; xor eax, eax
-                    ; cmp r13, 30000
-                    ; cmove r13, rax
-                },
-                b'[' => {
+                Instruction::JumpRight => {
                     let start_label = code.new_dynamic_label();
                     let end_label = code.new_dynamic_label();
                     dynasm! { code
@@ -86,7 +129,7 @@ impl Program {
 
                     bracket_stack.push((start_label, end_label));
                 }
-                b']' => {
+                Instruction::JumpLeft => {
                     let (start_label, end_label) = match bracket_stack.pop() {
                         Some(x) => x,
                         None => return Err(UnbalancedBrackets(']', code.offset().0)),
@@ -99,7 +142,9 @@ impl Program {
                         ; => end_label
                     };
                 }
-                _ => continue,
+                Instruction::Clear => todo!(),
+                Instruction::AddTo(_) => todo!(),
+                Instruction::MoveUntil(_) => todo!(),
             }
         }
 
