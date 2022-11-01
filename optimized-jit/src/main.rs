@@ -6,15 +6,15 @@ use dynasmrt::{dynasm, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembl
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum Instruction {
-    Add(u8),
-    Move(isize),
+    Add(i8),
+    Move(i32),
     Input,
     Output,
     JumpRight,
     JumpLeft,
     Clear,
-    AddTo(isize),
-    MoveUntil(isize),
+    AddTo(i32),
+    MoveUntil(i32),
 }
 
 struct UnbalancedBrackets(char, usize);
@@ -32,7 +32,7 @@ impl Program {
         for b in source {
             let instr = match b {
                 b'+' | b'-' => {
-                    let inc = if *b == b'+' { 1 } else { 1u8.wrapping_neg() };
+                    let inc = if *b == b'+' { 1 } else { -1 };
                     if let Some(Instruction::Add(value)) = instructions.last_mut() {
                         *value = value.wrapping_add(inc);
                         continue;
@@ -59,7 +59,7 @@ impl Program {
                             instructions.drain(len - 2..);
                             Instruction::Clear
                         }
-                        &[.., JumpRight, Add(255), Move(x), Add(1), Move(y)] if x == -y => {
+                        &[.., JumpRight, Add(-1), Move(x), Add(1), Move(y)] if x == -y => {
                             let len = instructions.len();
                             instructions.drain(len - 5..);
                             Instruction::AddTo(x)
@@ -95,8 +95,27 @@ impl Program {
 
         for instr in instructions.into_iter() {
             match instr {
-                Instruction::Add(_) => todo!(),
-                Instruction::Move(_) => todo!(),
+                Instruction::Add(n) => dynasm! { code
+                    ; .arch x64
+                    ; add BYTE [r12 + r13], BYTE n as i8
+                },
+                Instruction::Move(n) => {
+                    if n > 0 {
+                        dynasm! { code
+                            ; lea eax, [r13 + n]
+                            ; add r13, -(30000 - n)
+                            ; cmp eax, 30000
+                            ; cmovl	r13d, eax
+                        }
+                    } else {
+                        dynasm! { code
+                            ; lea eax, [r13 + n]
+                            ; add r13d, 30000 + n
+                            ; test eax, eax
+                            ; cmovns r13d, eax
+                        }
+                    }
+                }
                 Instruction::Input => {
                     dynasm! { code
                         ; .arch x64
@@ -142,9 +161,64 @@ impl Program {
                         ; => end_label
                     };
                 }
-                Instruction::Clear => todo!(),
-                Instruction::AddTo(_) => todo!(),
-                Instruction::MoveUntil(_) => todo!(),
+                Instruction::Clear => dynasm! { code
+                    ; .arch x64
+                    ; mov BYTE [r12 + r13], 0
+                },
+                Instruction::AddTo(n) => dynasm! { code
+                    ; .arch x64
+                    // rax = cell to add to
+                    ;;
+                    if n > 0 {
+                        dynasm! { code
+                            ; lea ecx, [r13 + n]
+                            ; lea eax, [r13 + n - 30000]
+                            ; cmp ecx, 30000
+                            ; cmovl eax, ecx
+                        }
+                    } else {
+                        dynasm! { code
+                            ; lea ecx, [r13 + n]
+                            ; lea eax, [r13 + 30000 + n]
+                            ; test ecx, ecx
+                            ; cmovns eax, ecx
+                        }
+                    }
+                    ; mov cl, [r12 + r13]
+                    ; add BYTE [r12 + rax], cl
+                    ; mov BYTE [r12 + r13], 0
+                },
+                Instruction::MoveUntil(n) => dynasm! { code
+                    ; .arch x64
+
+                    ; repeat:
+
+                    // check if 0
+                    ; cmp BYTE [r12 + r13], 0
+                    ; je >exit
+
+                    // Move n
+                    ;;
+                    if n > 0 {
+                        dynasm! { code
+                            ; lea eax, [r13 + n]
+                            ; add r13, -(30000 - n)
+                            ; cmp eax, 30000
+                            ; cmovl r13d, eax
+                        }
+                    } else {
+                        dynasm! { code
+                            ; lea eax, [r13 + n]
+                            ; add r13d, 30000 + n
+                            ; test eax, eax
+                            ; cmovns r13d, eax
+                        }
+                    }
+
+                    ; jmp <repeat
+
+                    ; exit:
+                },
             }
         }
 
