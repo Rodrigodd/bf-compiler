@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 import os
+import sys
 import subprocess
 import re
 
 steps = [
-    ("basic", "689bc2a"),
-    ("precomputejumps", "0be6f60"),
-    ("Add", "1ed437e"),
-    ("Move", "cbd8ba5"),
-    ("Clear", "bb4ff06"),
-    ("AddTo", "81d659a"),
-    ("MoveUntil", "d6b2b23"),
+    ("bf-optimized", "basic", "689bc2a"),
+    ("bf-optimized", "precomputejumps", "0be6f60"),
+    ("bf-optimized", "Add", "1ed437e"),
+    ("bf-optimized", "Move", "cbd8ba5"),
+    ("bf-optimized", "Clear", "bb4ff06"),
+    ("bf-optimized", "AddTo", "81d659a"),
+    ("bf-optimized", "MoveUntil", "d6b2b23"),
+
+    ("bf-singlepass-jit", "BasicJit", "bc3e2aa"),
+    ("bf-singlepass-jit", "CompleteJit", "f5a15d4"),
+    ("bf-optimized-jit", "OptimizedJit", "872c0c8"),
 ]
 
 p = re.compile(b"real\t(\d+)m(\d+.\d+)s")
@@ -31,29 +36,64 @@ def time(command):
 
     return t
 
-# compile each commit
-os.system('mkdir bench_programs')
-for name, commit in steps:
-    if os.system(f'git checkout {commit}') != 0:
-        raise('git checkout failed')
-    os.system('cargo build -p bf-optimized --release')
-    os.system(f'mv ./target/release/bf-optimized ./bench_programs/{name}')
+def compile():
+    # compile each commit
+    os.system('rm -rf bench_programs')
+    os.system('mkdir bench_programs')
+    for package, name, commit in steps:
+        if os.system(f'git checkout {commit}') != 0:
+            raise('git checkout failed')
+        os.system(f'cargo build -p {package} --release')
+        os.system(f'mv ./target/release/{package} ./bench_programs/{name}')
+    os.system("git checkout master")
 
-for interation in range(0,10):
-    print(f'interation {interation}')
-    time_csv = open(f'times/times{interation}.csv', 'w')
+def run():
+    programs = [
+        ('mandelbrot','./bench_programs/{name} ./programs/mandelbrot.bf'),
+        ('factor', 'echo 179424691 | ./bench_programs/{name} ./programs/factor.bf'),
+    ]
 
-    time_csv.write("change,factor.bf,mandelbrot.bf\n")
-    for name, commit in steps:
-        print(f'running for {name}')
-        text = name + ","
 
-        t1 = time(f'echo 179424691 | ./bench_programs/{name} ./programs/factor.bf')
-        t2 = time(f'./bench_programs/{name} ./programs/mandelbrot.bf')
+    os.system('mkdir times -p')
+    for name, command in programs:
+        csv_file = open(f'times/{name}.csv', 'w')
 
-        text = text + str(t1) + "," + str(t2) + "\n"
+        # header
+        header = "interation"
+        for _, name, _ in steps:
+           header = header + "," + name
 
-        print(text)
-        time_csv.write(text)
+        csv_file.write(header + '\n')
+        csv_file.flush()
 
-os.system("git checkout master")
+        # data
+        for interation in range(0,20):
+            print(f'interation {interation}')
+
+            text = f"{interation}"
+            for _, name, commit in steps:
+                print(f'running for {name}')
+
+                t = time(command.format(name = name))
+                print(f'{interation:2} {name}: {t}')
+
+                text = text + "," + str(t)
+
+            csv_file.write(text + '\n')
+            csv_file.flush()
+
+        csv_file.close()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print('expected 1 argument')
+        exit(1)
+
+    arg = sys.argv[1]
+    if arg == '-c' or arg == '--compile':
+        compile()
+    elif arg == '-r' or arg == '--run':
+        run()
+    else:
+        print('unkown argument: expected --compile (-c) or --run (-r)')
+        exit(2)

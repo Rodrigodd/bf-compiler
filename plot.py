@@ -14,16 +14,22 @@ sets = [
     [1, 2, 4, 5, 6, 7],
     [1, 2, 4, 7],
     [1,2,3,4,5,6,7],
+
+    [7, 8],
+    [7, 8, 9],
+    [7, 9, 10],
+    [1, 2, 4, 7, 9, 10],
+
+    [1,2,3,4,5,6,7,8,9,10],
 ]
 
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams["font.family"] = "Verdana"
 mpl.use("SVG")
 
-with plt.style.context('ggplot'), open('times/times_mean.csv', newline='') as csvfile:
+with plt.style.context('ggplot'), open('times/benchmark.csv', newline='') as csvfile:
 
     table = list(csv.reader(csvfile))
-    table[0].append('decrease')
     table = np.array(table)
 
     # swap factor and mandel
@@ -41,7 +47,7 @@ with plt.style.context('ggplot'), open('times/times_mean.csv', newline='') as cs
         fig, ax = plt.subplots()
 
         rects = []
-        for i, (label, factor, mandel, _) in enumerate(bars):
+        for i, (label, factor, mandel, _, _) in enumerate(bars):
             factor = factor.split("±")[0]
             mandel = mandel.split("±")[0]
             bar = [float(factor), float(mandel)]
