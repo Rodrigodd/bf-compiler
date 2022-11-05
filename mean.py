@@ -55,7 +55,6 @@ for i in range(0, len(table)):
             p = 16
         table[i][j] = f"{mean:.{p}f}±{std:.{p}f}"
 
-table.insert(0, 'commit,factor.bf,mandelbrot.bf,delta,delta')
+table.insert(0, ['commit','factor.bf','mandelbrot.bf','delta','delta'])
 with open('times/benchmark.csv', 'w') as f:
     csv.writer(f).writerows(table)
-
