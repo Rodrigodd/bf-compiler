@@ -22,7 +22,7 @@ for i, name in enumerate(["factor", "mandelbrot"]):
         for col in range(1,len(times[0])):
             values = times[:, col]
             mean = np.mean(values)
-            stderr = np.std(values) / math.sqrt(len(values))
+            stderr = np.std(values, ddof=1) / math.sqrt(len(values))
             
             table[col-1][i+1] = [mean, stderr]
 
@@ -34,7 +34,7 @@ for i, name in enumerate(["factor", "mandelbrot"]):
 
             ratio = curr/prev
             mean = np.mean(ratio)
-            stderr = np.std(ratio) / math.sqrt(len(ratio))
+            stderr = np.std(ratio, ddof=1) / math.sqrt(len(ratio))
 
             # convert to relative gain
             impr = (mean - 1) * 100.0
@@ -58,3 +58,4 @@ for i in range(0, len(table)):
 table.insert(0, ['commit','factor.bf','mandelbrot.bf','delta','delta'])
 with open('times/benchmark.csv', 'w') as f:
     csv.writer(f).writerows(table)
+
