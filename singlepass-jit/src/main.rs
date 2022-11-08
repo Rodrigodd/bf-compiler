@@ -158,7 +158,7 @@ extern "sysv64" fn write(value: u8) -> *mut std::io::Error {
     let result = stdout.write_all(&[value]).and_then(|_| stdout.flush());
 
     match result {
-        Err(err) => Box::leak(Box::new(err)) as *mut _,
+        Err(err) => Box::into_raw(Box::new(err)),
         _ => std::ptr::null_mut(),
     }
 }
@@ -171,7 +171,7 @@ unsafe extern "sysv64" fn read(buf: *mut u8) -> *mut std::io::Error {
 
         if let Err(err) = err {
             if err.kind() != std::io::ErrorKind::UnexpectedEof {
-                return Box::leak(Box::new(err));
+                return Box::into_raw(Box::new(err));
             }
             value = 0;
         }
