@@ -1,0 +1,12 @@
+[package]
+name = "bf-cranelift-jit"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cranelift = "0.89.2"
+libc = "0.2.137"
+memmap2 = "0.5.8"
+target-lexicon = "0.12.5"
