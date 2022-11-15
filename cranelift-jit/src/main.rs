@@ -51,37 +51,46 @@ impl Program {
         let mut func_ctx = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut func, &mut func_ctx);
 
+        let pointer = Variable::new(0);
+        builder.declare_var(pointer, pointer_type);
+
+        let exit_block = builder.create_block();
+        builder.append_block_param(exit_block, pointer_type);
+
         let block = builder.create_block();
         builder.seal_block(block);
 
         builder.append_block_params_for_function_params(block);
         builder.switch_to_block(block);
 
-        let pointer = Variable::new(0);
-        builder.declare_var(pointer, pointer_type);
+        let memory_address = builder.block_params(block)[0];
 
         let zero = builder.ins().iconst(pointer_type, 0);
         builder.def_var(pointer, zero);
 
-        let memory_address = builder.block_params(block)[0];
-
         let mem_flags = MemFlags::new(); //.with_notrap().with_heap();
 
-        let mut write_sig = Signature::new(CallConv::SystemV);
-        write_sig.params.push(AbiParam::new(I8));
-        write_sig.returns.push(AbiParam::new(pointer_type));
-        let write_sig = builder.import_signature(write_sig);
+        let (write_sig, write_address) = {
+            let mut write_sig = Signature::new(CallConv::SystemV);
+            write_sig.params.push(AbiParam::new(I8));
+            write_sig.returns.push(AbiParam::new(pointer_type));
+            let write_sig = builder.import_signature(write_sig);
 
-        let write_address = write as *const () as i64;
-        let write_address = builder.ins().iconst(pointer_type, write_address);
+            let write_address = write as *const () as i64;
+            let write_address = builder.ins().iconst(pointer_type, write_address);
+            (write_sig, write_address)
+        };
 
-        let mut read_sig = Signature::new(CallConv::SystemV);
-        read_sig.params.push(AbiParam::new(pointer_type));
-        read_sig.returns.push(AbiParam::new(pointer_type));
-        let read_sig = builder.import_signature(read_sig);
+        let (read_sig, read_address) = {
+            let mut read_sig = Signature::new(CallConv::SystemV);
+            read_sig.params.push(AbiParam::new(pointer_type));
+            read_sig.returns.push(AbiParam::new(pointer_type));
+            let read_sig = builder.import_signature(read_sig);
 
-        let read_address = read as *const () as i64;
-        let read_address = builder.ins().iconst(pointer_type, read_address);
+            let read_address = read as *const () as i64;
+            let read_address = builder.ins().iconst(pointer_type, read_address);
+            (read_sig, read_address)
+        };
 
         let mut stack = Vec::new();
 
@@ -99,6 +108,7 @@ impl Program {
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
                     let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
                     let cell_value = builder.ins().iadd_imm(cell_value, -1);
+
                     builder.ins().store(mem_flags, cell_value, cell_address, 0);
                 }
                 b'.' => {
@@ -106,17 +116,35 @@ impl Program {
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
                     let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
 
-                    builder
+                    let inst = builder
                         .ins()
                         .call_indirect(write_sig, write_address, &[cell_value]);
+                    let result = builder.inst_results(inst)[0];
+
+                    let after_block = builder.create_block();
+
+                    builder.ins().brnz(result, exit_block, &[result]);
+                    builder.ins().jump(after_block, &[]);
+
+                    builder.seal_block(after_block);
+                    builder.switch_to_block(after_block);
                 }
                 b',' => {
                     let pointer_value = builder.use_var(pointer);
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
 
-                    builder
+                    let inst = builder
                         .ins()
                         .call_indirect(read_sig, read_address, &[cell_address]);
+                    let result = builder.inst_results(inst)[0];
+
+                    let after_block = builder.create_block();
+
+                    builder.ins().brnz(result, exit_block, &[result]);
+                    builder.ins().jump(after_block, &[]);
+
+                    builder.seal_block(after_block);
+                    builder.switch_to_block(after_block);
                 }
                 b'<' => {
                     let pointer_value = builder.use_var(pointer);
@@ -178,6 +206,12 @@ impl Program {
         }
 
         builder.ins().return_(&[zero]);
+
+        builder.switch_to_block(exit_block);
+        builder.seal_block(exit_block);
+
+        let result = builder.block_params(exit_block)[0];
+        builder.ins().return_(&[result]);
 
         builder.finalize();
 
