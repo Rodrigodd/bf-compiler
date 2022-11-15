@@ -94,22 +94,53 @@ impl Program {
 
         let mut stack = Vec::new();
 
-        for (i, b) in source.iter().enumerate() {
+        let mut ops = source
+            .iter()
+            .enumerate()
+            .filter(|x| b"+-<>.,[]".contains(x.1))
+            .peekable();
+
+        while let Some((i, &b)) = ops.next() {
             match b {
-                b'+' => {
+                b'+' | b'-' => {
+                    let mut n = if b == b'+' { 1 } else { -1 };
+                    while ops.peek().map_or(false, |y| b"+-".contains(y.1)) {
+                        let b = *ops.next().unwrap().1;
+                        n += if b == b'+' { 1 } else { -1 };
+                    }
+
                     let pointer_value = builder.use_var(pointer);
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
                     let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
-                    let cell_value = builder.ins().iadd_imm(cell_value, 1);
+                    let cell_value = builder.ins().iadd_imm(cell_value, n);
                     builder.ins().store(mem_flags, cell_value, cell_address, 0);
                 }
-                b'-' => {
-                    let pointer_value = builder.use_var(pointer);
-                    let cell_address = builder.ins().iadd(memory_address, pointer_value);
-                    let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
-                    let cell_value = builder.ins().iadd_imm(cell_value, -1);
+                b'<' | b'>' => {
+                    let mut n = if b == b'>' { 1 } else { -1 };
+                    while ops.peek().map_or(false, |y| b"<>".contains(y.1)) {
+                        let b = *ops.next().unwrap().1;
+                        n += if b == b'>' { 1 } else { -1 };
+                    }
 
-                    builder.ins().store(mem_flags, cell_value, cell_address, 0);
+                    let pointer_value = builder.use_var(pointer);
+                    let pointer_plus = builder.ins().iadd_imm(pointer_value, n);
+
+                    let pointer_value = if n > 0 {
+                        let wrapped = builder.ins().iadd_imm(pointer_value, n - 30_000);
+                        let cmp =
+                            builder
+                                .ins()
+                                .icmp_imm(IntCC::SignedLessThan, pointer_plus, 30_000);
+                        builder.ins().select(cmp, pointer_plus, wrapped)
+                    } else {
+                        let wrapped = builder.ins().iadd_imm(pointer_value, n + 30_000);
+                        let cmp = builder
+                            .ins()
+                            .icmp_imm(IntCC::SignedLessThan, pointer_plus, 0);
+                        builder.ins().select(cmp, wrapped, pointer_plus)
+                    };
+
+                    builder.def_var(pointer, pointer_value);
                 }
                 b'.' => {
                     let pointer_value = builder.use_var(pointer);
@@ -145,24 +176,6 @@ impl Program {
 
                     builder.seal_block(after_block);
                     builder.switch_to_block(after_block);
-                }
-                b'<' => {
-                    let pointer_value = builder.use_var(pointer);
-                    let pointer_minus = builder.ins().iadd_imm(pointer_value, -1);
-
-                    let len = builder.ins().iconst(pointer_type, 30_000 - 1);
-                    let pointer_value = builder.ins().select(pointer_value, pointer_minus, len);
-
-                    builder.def_var(pointer, pointer_value);
-                }
-                b'>' => {
-                    let pointer_value = builder.use_var(pointer);
-                    let pointer_plus = builder.ins().iadd_imm(pointer_value, 1);
-
-                    let cmp = builder.ins().icmp_imm(IntCC::Equal, pointer_value, 30_000);
-                    let pointer_value = builder.ins().select(cmp, zero, pointer_plus);
-
-                    builder.def_var(pointer, pointer_value);
                 }
                 b'[' => {
                     let inner_block = builder.create_block();
