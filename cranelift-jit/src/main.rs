@@ -17,6 +17,19 @@ use std::{
 };
 use target_lexicon::Triple;
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Instruction {
+    Add(i8),
+    Move(i32),
+    Input,
+    Output,
+    JumpRight,
+    JumpLeft,
+    Clear,
+    AddTo(i32),
+    // The MoveUntil was removed, because it does not offer such a better implementation
+}
+
 struct UnbalancedBrackets(char, usize);
 
 struct Program {
@@ -25,6 +38,51 @@ struct Program {
 }
 impl Program {
     fn new(source: &[u8], clir: bool) -> Result<Program, UnbalancedBrackets> {
+        let mut instructions = Vec::new();
+
+        for b in source {
+            let instr = match b {
+                b'+' | b'-' => {
+                    let inc = if *b == b'+' { 1 } else { -1 };
+                    if let Some(Instruction::Add(value)) = instructions.last_mut() {
+                        *value = value.wrapping_add(inc);
+                        continue;
+                    }
+                    Instruction::Add(inc)
+                }
+                b'.' => Instruction::Output,
+                b',' => Instruction::Input,
+                b'>' | b'<' => {
+                    let inc = if *b == b'>' { 1 } else { -1 };
+                    if let Some(Instruction::Move(value)) = instructions.last_mut() {
+                        *value += inc;
+                        continue;
+                    }
+                    Instruction::Move(inc)
+                }
+                b'[' => Instruction::JumpRight,
+                b']' => {
+                    use Instruction::*;
+                    match instructions.as_slice() {
+                        // could enter a infinite loop if n is even.
+                        [.., JumpRight, Add(n)] if *n as u8 % 2 == 1 => {
+                            let len = instructions.len();
+                            instructions.drain(len - 2..);
+                            Instruction::Clear
+                        }
+                        &[.., JumpRight, Add(-1), Move(x), Add(1), Move(y)] if x == -y => {
+                            let len = instructions.len();
+                            instructions.drain(len - 5..);
+                            Instruction::AddTo(x)
+                        }
+                        _ => Instruction::JumpLeft,
+                    }
+                }
+                _ => continue,
+            };
+            instructions.push(instr);
+        }
+
         // possible settings: https://docs.rs/cranelift-codegen/latest/src/cranelift_codegen/opt/rustwide/target/x86_64-unknown-linux-gnu/debug/build/cranelift-codegen-b5deaeb0cd154533/out/settings.rs.html#490-664
         let mut builder = settings::builder();
         builder.set("opt_level", "speed").unwrap();
@@ -65,6 +123,7 @@ impl Program {
 
         let memory_address = builder.block_params(block)[0];
 
+        let zero_byte = builder.ins().iconst(I8, 0);
         let zero = builder.ins().iconst(pointer_type, 0);
         builder.def_var(pointer, zero);
 
@@ -94,34 +153,18 @@ impl Program {
 
         let mut stack = Vec::new();
 
-        let mut ops = source
-            .iter()
-            .enumerate()
-            .filter(|x| b"+-<>.,[]".contains(x.1))
-            .peekable();
-
-        while let Some((i, &b)) = ops.next() {
-            match b {
-                b'+' | b'-' => {
-                    let mut n = if b == b'+' { 1 } else { -1 };
-                    while ops.peek().map_or(false, |y| b"+-".contains(y.1)) {
-                        let b = *ops.next().unwrap().1;
-                        n += if b == b'+' { 1 } else { -1 };
-                    }
-
+        for (i, instr) in instructions.into_iter().enumerate() {
+            match instr {
+                Instruction::Add(n) => {
+                    let n = n as i64;
                     let pointer_value = builder.use_var(pointer);
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
                     let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
-                    let cell_value = builder.ins().iadd_imm(cell_value, n);
+                    let cell_value = builder.ins().iadd_imm(cell_value, n as i64);
                     builder.ins().store(mem_flags, cell_value, cell_address, 0);
                 }
-                b'<' | b'>' => {
-                    let mut n = if b == b'>' { 1 } else { -1 };
-                    while ops.peek().map_or(false, |y| b"<>".contains(y.1)) {
-                        let b = *ops.next().unwrap().1;
-                        n += if b == b'>' { 1 } else { -1 };
-                    }
-
+                Instruction::Move(n) => {
+                    let n = n as i64;
                     let pointer_value = builder.use_var(pointer);
                     let pointer_plus = builder.ins().iadd_imm(pointer_value, n);
 
@@ -142,7 +185,7 @@ impl Program {
 
                     builder.def_var(pointer, pointer_value);
                 }
-                b'.' => {
+                Instruction::Output => {
                     let pointer_value = builder.use_var(pointer);
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
                     let cell_value = builder.ins().load(I8, mem_flags, cell_address, 0);
@@ -160,7 +203,7 @@ impl Program {
                     builder.seal_block(after_block);
                     builder.switch_to_block(after_block);
                 }
-                b',' => {
+                Instruction::Input => {
                     let pointer_value = builder.use_var(pointer);
                     let cell_address = builder.ins().iadd(memory_address, pointer_value);
 
@@ -177,7 +220,7 @@ impl Program {
                     builder.seal_block(after_block);
                     builder.switch_to_block(after_block);
                 }
-                b'[' => {
+                Instruction::JumpRight => {
                     let inner_block = builder.create_block();
                     let after_block = builder.create_block();
 
@@ -192,7 +235,7 @@ impl Program {
 
                     stack.push((inner_block, after_block));
                 }
-                b']' => {
+                Instruction::JumpLeft => {
                     let (inner_block, after_block) = match stack.pop() {
                         Some(x) => x,
                         None => return Err(UnbalancedBrackets(']', i)),
@@ -210,7 +253,39 @@ impl Program {
 
                     builder.switch_to_block(after_block);
                 }
-                _ => continue,
+                Instruction::Clear => {
+                    let pointer_value = builder.use_var(pointer);
+                    let cell_address = builder.ins().iadd(memory_address, pointer_value);
+                    builder.ins().store(mem_flags, zero_byte, cell_address, 0);
+                }
+                Instruction::AddTo(n) => {
+                    let n = n as i64;
+                    let pointer_value = builder.use_var(pointer);
+                    let to_add = builder.ins().iadd_imm(pointer_value, n);
+
+                    let to_add = if n > 0 {
+                        let wrapped = builder.ins().iadd_imm(pointer_value, n - 30_000);
+                        let cmp = builder
+                            .ins()
+                            .icmp_imm(IntCC::SignedLessThan, to_add, 30_000);
+                        builder.ins().select(cmp, to_add, wrapped)
+                    } else {
+                        let wrapped = builder.ins().iadd_imm(pointer_value, n + 30_000);
+                        let cmp = builder.ins().icmp_imm(IntCC::SignedLessThan, to_add, 0);
+                        builder.ins().select(cmp, wrapped, to_add)
+                    };
+
+                    let from_address = builder.ins().iadd(memory_address, pointer_value);
+                    let to_address = builder.ins().iadd(memory_address, to_add);
+
+                    let from_value = builder.ins().load(I8, mem_flags, from_address, 0);
+                    let to_value = builder.ins().load(I8, mem_flags, to_address, 0);
+
+                    let sum = builder.ins().iadd(to_value, from_value);
+
+                    builder.ins().store(mem_flags, zero_byte, from_address, 0);
+                    builder.ins().store(mem_flags, sum, to_address, 0);
+                }
             }
         }
 
