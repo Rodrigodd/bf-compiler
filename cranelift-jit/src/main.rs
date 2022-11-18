@@ -100,7 +100,7 @@ impl Program {
         let pointer_type = isa.pointer_type();
 
         // get memory address parameter, and return pointer to io::Error
-        let mut sig = Signature::new(CallConv::SystemV);
+        let mut sig = Signature::new(CallConv::triple_default(isa.triple()));
         sig.params.push(AbiParam::new(pointer_type));
         sig.returns.push(AbiParam::new(pointer_type));
 
@@ -348,7 +348,7 @@ impl Program {
         let buffer = buffer.make_exec().unwrap();
 
         unsafe {
-            let code_fn: unsafe extern "sysv64" fn(*mut u8) -> *mut std::io::Error =
+            let code_fn: unsafe extern "C" fn(*mut u8) -> *mut std::io::Error =
                 std::mem::transmute(buffer.as_ptr());
 
             let error = code_fn(self.memory.as_mut_ptr());
@@ -362,7 +362,7 @@ impl Program {
     }
 }
 
-extern "sysv64" fn write(value: u8) -> *mut std::io::Error {
+extern "C" fn write(value: u8) -> *mut std::io::Error {
     // Writing a non-UTF-8 byte sequence on Windows error out.
     if cfg!(target_os = "windows") && value >= 128 {
         return std::ptr::null_mut();
@@ -378,7 +378,7 @@ extern "sysv64" fn write(value: u8) -> *mut std::io::Error {
     }
 }
 
-unsafe extern "sysv64" fn read(buf: *mut u8) -> *mut std::io::Error {
+unsafe extern "C" fn read(buf: *mut u8) -> *mut std::io::Error {
     let mut stdin = std::io::stdin().lock();
     loop {
         let mut value = 0;
