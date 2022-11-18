@@ -1,2 +1,9 @@
 [workspace]
-members = ["interpreter", "optimized", "singlepass-jit", "optimized-jit"]
+members = [
+    "interpreter",
+    "optimized",
+    "singlepass-jit",
+    "optimized-jit",
+    "cranelift-jit",
+    "cranelift-example",
+]

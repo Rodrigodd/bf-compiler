@@ -1,0 +1,12 @@
+[package]
+name = "cranelift-example"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cranelift = "0.89.2"
+cranelift-codegen = { version = "0.89.2", features = ["arm64"] }
+memmap2 = "0.5.8"
+target-lexicon = "0.12.5"
