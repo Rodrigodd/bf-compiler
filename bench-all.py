@@ -13,9 +13,13 @@ steps = [
     ("bf-optimized", "AddTo", "81d659a"),
     ("bf-optimized", "MoveUntil", "d6b2b23"),
 
-    ("bf-singlepass-jit", "BasicJit", "bc3e2aa"),
-    ("bf-singlepass-jit", "CompleteJit", "f5a15d4"),
-    ("bf-optimized-jit", "OptimizedJit", "872c0c8"),
+    ("bf-singlepass-jit", "singlepass-jit", "bc3e2aa"),
+    ("bf-singlepass-jit", "dynasm-jit", "f5a15d4"),
+    ("bf-optimized-jit", "optimized-jit", "872c0c8"),
+
+    ("bf-cranelift-jit", "cranelift-jit", "6ed28d7"),
+    ("bf-cranelift-jit", "repeat-cranelift-jit", "9d6664f"),
+    ("bf-cranelift-jit", "optimized-cranelift-jit", "eaf72a5"),
 ]
 
 p = re.compile(b"real\t(\d+)m(\d+.\d+)s")
