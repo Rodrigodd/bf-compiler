@@ -1,15 +1,17 @@
 use cranelift::{
     codegen::{
-        ir::{types::I64, AbiParam, Function, InstBuilder, Signature, UserFuncName},
+        ir::{types::I32, AbiParam, Function, InstBuilder, Signature, UserFuncName},
         isa::{self, CallConv},
         settings, verify_function, Context,
     },
     frontend::{FunctionBuilder, FunctionBuilderContext},
+    prelude::Configurable,
 };
 use target_lexicon::Triple;
 
 fn main() {
-    let builder = settings::builder();
+    let mut builder = settings::builder();
+    builder.set("opt_level", "speed").unwrap();
     let flags = settings::Flags::new(builder);
 
     let isa = match isa::lookup(Triple::host()) {
@@ -18,8 +20,8 @@ fn main() {
     };
 
     let mut sig = Signature::new(CallConv::SystemV);
-    sig.params.push(AbiParam::new(I64));
-    sig.returns.push(AbiParam::new(I64));
+    sig.params.push(AbiParam::new(I32));
+    sig.returns.push(AbiParam::new(I32));
 
     let mut func = Function::with_name_signature(UserFuncName::default(), sig);
 
@@ -33,8 +35,11 @@ fn main() {
     builder.switch_to_block(block);
 
     let arg = builder.block_params(block)[0];
-    let plus_one = builder.ins().iadd_imm(arg, 1);
-    builder.ins().return_(&[plus_one]);
+    let one = builder.ins().iconst(I32, 1);
+    let plus_one = builder.ins().iadd(arg, one);
+    let one = builder.ins().iconst(I32, 1);
+    let plus_two = builder.ins().iadd(plus_one, one);
+    builder.ins().return_(&[plus_two]);
 
     builder.finalize();
 
@@ -48,6 +53,8 @@ fn main() {
 
     println!("{}", code.disasm.as_ref().unwrap());
     std::fs::write("dump.bin", code.code_buffer()).unwrap();
+
+    println!("{}", ctx.func.display());
 
     // let mut buffer = memmap2::MmapOptions::new()
     //     .len(code.code_buffer().len())
