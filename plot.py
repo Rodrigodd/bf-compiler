@@ -30,6 +30,7 @@ sets = [
 
 plt.rcParams['svg.fonttype'] = 'none'
 plt.rcParams["font.family"] = "Verdana"
+plt.rcParams['svg.hashsalt'] = ''
 mpl.use("SVG")
 
 with plt.style.context('ggplot'), open('times/benchmark.csv', newline='') as csvfile:
@@ -73,5 +74,5 @@ with plt.style.context('ggplot'), open('times/benchmark.csv', newline='') as csv
 
         if not os.path.exists('plots'):
             os.mkdir('plots')
-        plt.savefig(f'plots/plot{index}.svg')
+        plt.savefig(f'plots/plot{index}.svg', metadata={'Date': None})
         # plt.show()
