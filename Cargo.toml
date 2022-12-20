@@ -7,4 +7,5 @@ members = [
     "cranelift-jit",
     "cranelift-example",
     "object-example",
+    "singlepass-compiler",
 ]
