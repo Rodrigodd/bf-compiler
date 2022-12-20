@@ -6,4 +6,5 @@ members = [
     "optimized-jit",
     "cranelift-jit",
     "cranelift-example",
+    "object-example",
 ]
