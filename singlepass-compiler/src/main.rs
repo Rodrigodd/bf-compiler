@@ -13,6 +13,7 @@ struct Program {
     code: Vec<u8>,
     write_relocations: Vec<usize>,
     read_relocations: Vec<usize>,
+    call_relocation: usize,
 }
 impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
@@ -105,18 +106,19 @@ impl Program {
             return Err(UnbalancedBrackets(']', code.offset().0));
         }
 
+        let call_relocation;
+
         dynasm! { code
             ; .arch x64
-            ; xor rax, rax
-            ; mov rdi, rax // exit error code
-            ; mov rax, 60 // exit syscall
-            ; syscall
+            ; call DWORD 0
+            ;; call_relocation = code.offset().0 - 4
         }
 
         Ok(Program {
             code: code.finalize().unwrap(),
             write_relocations,
             read_relocations,
+            call_relocation,
         })
     }
 
@@ -157,6 +159,16 @@ impl Program {
             section: object::write::SymbolSection::Undefined,
             flags: SymbolFlags::None,
         });
+        let bf_exit = obj.add_symbol(Symbol {
+            name: b"bf_exit".to_vec(),
+            value: 0,
+            size: 0,
+            kind: object::SymbolKind::Text,
+            scope: object::SymbolScope::Linkage,
+            weak: false,
+            section: object::write::SymbolSection::Undefined,
+            flags: SymbolFlags::None,
+        });
 
         let text = obj.section_id(object::write::StandardSection::Text);
         obj.add_symbol_data(start, text, &self.code, 16);
@@ -189,6 +201,18 @@ impl Program {
             )
             .unwrap();
         }
+        obj.add_relocation(
+            text,
+            Relocation {
+                offset: self.call_relocation as u64,
+                size: 32,
+                kind: object::RelocationKind::Relative,
+                encoding: object::RelocationEncoding::Generic,
+                symbol: bf_exit,
+                addend: -4,
+            },
+        )
+        .unwrap();
 
         let mut out = Vec::new();
         obj.emit(&mut out).unwrap();

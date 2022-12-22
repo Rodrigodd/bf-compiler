@@ -45,3 +45,8 @@ pub unsafe extern "sysv64" fn bf_read(buf: *mut u8) -> *mut std::io::Error {
         return std::ptr::null_mut();
     }
 }
+
+#[no_mangle]
+pub unsafe extern "sysv64" fn bf_exit() {
+    std::process::exit(0);
+}
