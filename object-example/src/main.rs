@@ -8,7 +8,7 @@ use object::{
     },
     write::{
         elf::{FileHeader, ProgramHeader},
-        Symbol,
+        Relocation, Symbol,
     },
     SymbolFlags,
 };
@@ -16,24 +16,26 @@ use object::{
 fn main() {
     let mut code: VecAssembler<X64Relocation> = VecAssembler::new(0);
 
+    let hello_str = b"Hello world!\n\0";
     dynasm!(code
-        ; mov eax,1            // 'write' system call = 4
-        ; mov edi,1            // file descriptor 1 = STDOUT
-        ; lea rsi, [>hello]    // string to write
-        ; mov edx,12           // length of string to write
-        ; syscall              // call the kernel
+        // ; mov eax,1            // 'write' system call = 4
+        // ; mov edi,1            // file descriptor 1 = STDOUT
+        // ; lea rsi, [>hello]    // string to write
+        // ; mov edx,12           // length of string to write
+        // ; syscall              // call the kernel
+        ; lea rdi, [>hello]
+        ; mov rsi, QWORD hello_str.len() as i64
+        ; call DWORD 0
 
         // Terminate program
         ; mov eax,60           // 'exit' system call
         ; mov edi,0            // exit with error code 0
         ; syscall              // call the kernel
         ; hello:
-        ; .bytes b"Hello world!"
+        ; .bytes hello_str
     );
 
     let code = code.finalize().unwrap();
-
-    std::fs::write("dump.bin", &code).unwrap();
 
     let mut buffer = memmap2::MmapOptions::new()
         .len(code.len())
@@ -71,11 +73,36 @@ fn main() {
                 section: object::write::SymbolSection::Undefined,
                 flags: SymbolFlags::None,
             });
+            let my_write = obj.add_symbol(Symbol {
+                name: b"my_write".to_vec(),
+                value: 0,
+                size: 0,
+                kind: object::SymbolKind::Text,
+                scope: object::SymbolScope::Linkage,
+                weak: false,
+                section: object::write::SymbolSection::Undefined,
+                flags: SymbolFlags::None,
+            });
 
             let text = obj.section_id(object::write::StandardSection::Text);
             obj.add_symbol_data(start, text, &code, 16);
+
+            obj.add_relocation(
+                text,
+                Relocation {
+                    offset: 0x12,
+                    size: 32,
+                    kind: object::RelocationKind::Relative,
+                    encoding: object::RelocationEncoding::Generic,
+                    symbol: my_write,
+                    addend: -4,
+                },
+            )
+            .unwrap();
+
             let mut out = Vec::new();
             obj.emit(&mut out).unwrap();
+
             std::fs::write("out.elf", out).unwrap();
         }
         "exe" => {
