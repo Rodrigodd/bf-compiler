@@ -124,7 +124,13 @@ impl Program {
 
     fn to_elf_object(&self) -> Vec<u8> {
         let mut obj = object::write::Object::new(
-            object::BinaryFormat::Elf,
+            if cfg!(target_os = "windows") {
+                object::BinaryFormat::Coff
+            } else if cfg!(target_os = "linux") {
+                object::BinaryFormat::Elf
+            } else {
+                unimplemented!("only linux and windows are implemented")
+            },
             object::Architecture::X86_64,
             object::Endianness::Little,
         );

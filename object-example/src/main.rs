@@ -17,20 +17,23 @@ fn main() {
     let mut code: VecAssembler<X64Relocation> = VecAssembler::new(0);
 
     let hello_str = b"Hello world!\n\0";
+    let my_write_reloc;
     dynasm!(code
         // ; mov eax,1            // 'write' system call = 4
         // ; mov edi,1            // file descriptor 1 = STDOUT
         // ; lea rsi, [>hello]    // string to write
         // ; mov edx,12           // length of string to write
         // ; syscall              // call the kernel
+        ; sub rsp, 8+8+8+32
         ; lea rdi, [>hello]
         ; mov rsi, QWORD hello_str.len() as i64
         ; call DWORD 0
+        ;; my_write_reloc = code.offset().0 as u64 - 4
 
         // Terminate program
-        ; mov eax,60           // 'exit' system call
-        ; mov edi,0            // exit with error code 0
-        ; syscall              // call the kernel
+        ; add rsp, 8+8+32+8
+        ; xor eax, eax
+        ; ret
         ; hello:
         ; .bytes hello_str
     );
@@ -58,7 +61,7 @@ fn main() {
         },
         "obj" => {
             let mut obj = object::write::Object::new(
-                object::BinaryFormat::Elf,
+                object::BinaryFormat::Coff,
                 object::Architecture::X86_64,
                 object::Endianness::Little,
             );
@@ -90,7 +93,7 @@ fn main() {
             obj.add_relocation(
                 text,
                 Relocation {
-                    offset: 0x12,
+                    offset: my_write_reloc,
                     size: 32,
                     kind: object::RelocationKind::Relative,
                     encoding: object::RelocationEncoding::Generic,

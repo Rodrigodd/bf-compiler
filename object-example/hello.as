@@ -1,21 +1,17 @@
 ; Code goes in the text section
 SECTION .TEXT
-	global _start 
+	global _main 
 	extern my_write
+    extern ExitProcess
 
-_start:
-	; mov rax,1            ; 'write' system call = 4
-	; mov rdi,1            ; file descriptor 1 = STDOUT
-	; lea rsi, [rel hello] ; string to write
-	; mov rdx,13           ; length of string to write
-	; syscall              ; call the kernel
-	
-	lea rdi, [rel hello]
-	mov rsi, 12
-	call my_write
+_main:
+    sub rsp, 8+8+8+32
+    lea rdi, [rel hello]
+    mov rsi, 13
+    call my_write
 
 	; Terminate program
-	mov rax,60            ; 'exit' system call
-	mov rdi,0            ; exit with error code 0
-	syscall              ; call the kernel
+    add rsp, 8+8+32+8
+    xor eax, eax
+    ret
 hello:     db 'Hello world!',10,0
