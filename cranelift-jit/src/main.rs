@@ -99,8 +99,10 @@ impl Program {
 
         let pointer_type = isa.pointer_type();
 
+        let call_conv = CallConv::triple_default(isa.triple());
+
         // get memory address parameter, and return pointer to io::Error
-        let mut sig = Signature::new(CallConv::triple_default(isa.triple()));
+        let mut sig = Signature::new(call_conv);
         sig.params.push(AbiParam::new(pointer_type));
         sig.returns.push(AbiParam::new(pointer_type));
 
@@ -130,7 +132,7 @@ impl Program {
         let mem_flags = MemFlags::new(); //.with_notrap().with_heap();
 
         let (write_sig, write_address) = {
-            let mut write_sig = Signature::new(CallConv::SystemV);
+            let mut write_sig = Signature::new(call_conv);
             write_sig.params.push(AbiParam::new(I8));
             write_sig.returns.push(AbiParam::new(pointer_type));
             let write_sig = builder.import_signature(write_sig);
@@ -141,7 +143,7 @@ impl Program {
         };
 
         let (read_sig, read_address) = {
-            let mut read_sig = Signature::new(CallConv::SystemV);
+            let mut read_sig = Signature::new(call_conv);
             read_sig.params.push(AbiParam::new(pointer_type));
             read_sig.returns.push(AbiParam::new(pointer_type));
             let read_sig = builder.import_signature(read_sig);
