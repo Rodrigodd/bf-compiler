@@ -13,7 +13,7 @@ struct Program {
     code: Vec<u8>,
     write_relocations: Vec<usize>,
     read_relocations: Vec<usize>,
-    call_relocation: usize,
+    exit_relocation: usize,
 }
 impl Program {
     fn new(source: &[u8]) -> Result<Program, UnbalancedBrackets> {
@@ -106,19 +106,19 @@ impl Program {
             return Err(UnbalancedBrackets(']', code.offset().0));
         }
 
-        let call_relocation;
+        let exit_relocation;
 
         dynasm! { code
             ; .arch x64
             ; call DWORD 0
-            ;; call_relocation = code.offset().0 - 4
+            ;; exit_relocation = code.offset().0 - 4
         }
 
         Ok(Program {
             code: code.finalize().unwrap(),
             write_relocations,
             read_relocations,
-            call_relocation,
+            exit_relocation,
         })
     }
 
@@ -204,7 +204,7 @@ impl Program {
         obj.add_relocation(
             text,
             Relocation {
-                offset: self.call_relocation as u64,
+                offset: self.exit_relocation as u64,
                 size: 32,
                 kind: object::RelocationKind::Relative,
                 encoding: object::RelocationEncoding::Generic,
