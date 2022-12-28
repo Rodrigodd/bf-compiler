@@ -27,9 +27,19 @@ impl Program {
             ; push rbp
             ; mov rbp, rsp
             ; xor r13, r13
+
             // allocate 30_0000 bytes on stack for the memory
             ; sub rsp, 30_000
             ; mov r12, rsp
+
+            // zero the memory
+            ; xor eax, eax
+            ; mov r11, r12
+            ; loop_:
+            ; mov QWORD [r11], rax
+            ; add r11, 8
+            ; cmp r11, rbp
+            ; jne <loop_
         };
 
         let mut write_relocations = Vec::new();
