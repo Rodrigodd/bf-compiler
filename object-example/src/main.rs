@@ -16,16 +16,15 @@ use object::{
 fn main() {
     let mut code: VecAssembler<X64Relocation> = VecAssembler::new(0);
 
-    let hello_str = b"Hello world!\n\0";
+    let hello_str = b"Hello world!\n";
+    let len = hello_str.len() as i32;
+
+    let relocation_offset;
     dynasm!(code
-        // ; mov eax,1            // 'write' system call = 4
-        // ; mov edi,1            // file descriptor 1 = STDOUT
-        // ; lea rsi, [>hello]    // string to write
-        // ; mov edx,12           // length of string to write
-        // ; syscall              // call the kernel
-        ; lea rdi, [>hello]
-        ; mov rsi, QWORD hello_str.len() as i64
+        ; lea rdi, [>hello]    // string to write
+        ; mov rsi, DWORD len   // length of string to write
         ; call DWORD 0
+        ;; relocation_offset = code.offset().0 as u64 - 4
 
         // Terminate program
         ; mov eax,60           // 'exit' system call
@@ -53,8 +52,8 @@ fn main() {
     }
     match args[1].as_str() {
         "run" => unsafe {
-            let add1: unsafe extern "C" fn() -> ! = std::mem::transmute(buffer.as_ptr());
-            add1()
+            let hello: unsafe extern "C" fn() -> ! = std::mem::transmute(buffer.as_ptr());
+            hello()
         },
         "obj" => {
             let mut obj = object::write::Object::new(
@@ -65,32 +64,32 @@ fn main() {
 
             let start = obj.add_symbol(Symbol {
                 name: b"_start".to_vec(),
-                value: 0,
-                size: 0,
                 kind: object::SymbolKind::Text,
                 scope: object::SymbolScope::Linkage,
                 weak: false,
-                section: object::write::SymbolSection::Undefined,
                 flags: SymbolFlags::None,
+
+                value: 0,
+                size: 0,
+                section: object::write::SymbolSection::Undefined,
             });
             let my_write = obj.add_symbol(Symbol {
                 name: b"my_write".to_vec(),
-                value: 0,
-                size: 0,
                 kind: object::SymbolKind::Text,
                 scope: object::SymbolScope::Linkage,
                 weak: false,
-                section: object::write::SymbolSection::Undefined,
                 flags: SymbolFlags::None,
+
+                value: 0,
+                size: 0,
+                section: object::write::SymbolSection::Undefined,
             });
 
             let text = obj.section_id(object::write::StandardSection::Text);
-            obj.add_symbol_data(start, text, &code, 16);
-
             obj.add_relocation(
                 text,
                 Relocation {
-                    offset: 0x12,
+                    offset: relocation_offset,
                     size: 32,
                     kind: object::RelocationKind::Relative,
                     encoding: object::RelocationEncoding::Generic,
@@ -100,10 +99,12 @@ fn main() {
             )
             .unwrap();
 
+            obj.add_symbol_data(start, text, &code, 1);
+
             let mut out = Vec::new();
             obj.emit(&mut out).unwrap();
 
-            std::fs::write("out.elf", out).unwrap();
+            std::fs::write("hello.o", out).unwrap();
         }
         "exe" => {
             let mut out = Vec::new();
