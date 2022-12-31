@@ -1,27 +1,24 @@
 use std::io::{Read, Write};
 
 #[no_mangle]
-pub extern "sysv64" fn bf_write(value: u8) -> *mut std::io::Error {
+pub extern "sysv64" fn bf_write(value: u8) {
     // Writing a non-UTF-8 byte sequence on Windows error out.
     if cfg!(target_os = "windows") && value >= 128 {
-        return std::ptr::null_mut();
+        return;
     }
 
     let mut stdout = std::io::stdout().lock();
 
     let result = stdout.write_all(&[value]).and_then(|_| stdout.flush());
 
-    match result {
-        Err(err) => {
-            eprintln!("IO error: {}", err);
-            std::process::exit(1);
-        }
-        _ => std::ptr::null_mut(),
+    if let Err(err) = result {
+        eprintln!("IO error: {}", err);
+        std::process::exit(1);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "sysv64" fn bf_read(buf: *mut u8) -> *mut std::io::Error {
+pub unsafe extern "sysv64" fn bf_read(buf: *mut u8) {
     let mut stdin = std::io::stdin().lock();
     loop {
         let mut value = 0;
@@ -41,8 +38,7 @@ pub unsafe extern "sysv64" fn bf_read(buf: *mut u8) -> *mut std::io::Error {
         }
 
         *buf = value;
-
-        return std::ptr::null_mut();
+        break;
     }
 }
 
