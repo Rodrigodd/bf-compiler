@@ -139,90 +139,49 @@ impl Program {
             object::Endianness::Little,
         );
 
-        let start = obj.add_symbol(Symbol {
-            name: b"_start".to_vec(),
-            value: 0,
-            size: 0,
-            kind: object::SymbolKind::Text,
-            scope: object::SymbolScope::Linkage,
-            weak: false,
-            section: object::write::SymbolSection::Undefined,
-            flags: SymbolFlags::None,
-        });
-        let bf_write = obj.add_symbol(Symbol {
-            name: b"bf_write".to_vec(),
-            value: 0,
-            size: 0,
-            kind: object::SymbolKind::Text,
-            scope: object::SymbolScope::Linkage,
-            weak: false,
-            section: object::write::SymbolSection::Undefined,
-            flags: SymbolFlags::None,
-        });
-        let bf_read = obj.add_symbol(Symbol {
-            name: b"bf_read".to_vec(),
-            value: 0,
-            size: 0,
-            kind: object::SymbolKind::Text,
-            scope: object::SymbolScope::Linkage,
-            weak: false,
-            section: object::write::SymbolSection::Undefined,
-            flags: SymbolFlags::None,
-        });
-        let bf_exit = obj.add_symbol(Symbol {
-            name: b"bf_exit".to_vec(),
-            value: 0,
-            size: 0,
-            kind: object::SymbolKind::Text,
-            scope: object::SymbolScope::Linkage,
-            weak: false,
-            section: object::write::SymbolSection::Undefined,
-            flags: SymbolFlags::None,
-        });
+        let mut add_symbol = |name: &[u8]| {
+            obj.add_symbol(Symbol {
+                name: name.to_vec(),
+                value: 0,
+                size: 0,
+                kind: object::SymbolKind::Text,
+                scope: object::SymbolScope::Linkage,
+                weak: false,
+                section: object::write::SymbolSection::Undefined,
+                flags: SymbolFlags::None,
+            })
+        };
+
+        let start = add_symbol(b"_start");
+        let bf_write = add_symbol(b"bf_write");
+        let bf_read = add_symbol(b"bf_read");
+        let bf_exit = add_symbol(b"bf_exit");
 
         let text = obj.section_id(object::write::StandardSection::Text);
         obj.add_symbol_data(start, text, &self.code, 16);
 
-        for offset in self.read_relocations.iter().copied() {
+        let mut add_call_reloc = |offset, symbol| {
             obj.add_relocation(
                 text,
                 Relocation {
                     offset: offset as u64,
+                    symbol,
                     size: 32,
                     kind: object::RelocationKind::Relative,
                     encoding: object::RelocationEncoding::Generic,
-                    symbol: bf_read,
                     addend: -4,
                 },
             )
             .unwrap();
+        };
+
+        for offset in self.read_relocations.iter().copied() {
+            add_call_reloc(offset, bf_read);
         }
         for offset in self.write_relocations.iter().copied() {
-            obj.add_relocation(
-                text,
-                Relocation {
-                    offset: offset as u64,
-                    size: 32,
-                    kind: object::RelocationKind::Relative,
-                    encoding: object::RelocationEncoding::Generic,
-                    symbol: bf_write,
-                    addend: -4,
-                },
-            )
-            .unwrap();
+            add_call_reloc(offset, bf_write);
         }
-        obj.add_relocation(
-            text,
-            Relocation {
-                offset: self.exit_relocation as u64,
-                size: 32,
-                kind: object::RelocationKind::Relative,
-                encoding: object::RelocationEncoding::Generic,
-                symbol: bf_exit,
-                addend: -4,
-            },
-        )
-        .unwrap();
+        add_call_reloc(self.exit_relocation, bf_exit);
 
         let mut out = Vec::new();
         obj.emit(&mut out).unwrap();
