@@ -34,11 +34,11 @@ impl Program {
 
             // zero the memory
             ; xor eax, eax
-            ; mov r11, r12
+            ; mov r11, rbp
             ; loop_:
+            ; add r11, -8
             ; mov QWORD [r11], rax
-            ; add r11, 8
-            ; cmp r11, rbp
+            ; cmp r11, r12
             ; jne <loop_
         };
 
@@ -133,8 +133,17 @@ impl Program {
     }
 
     fn to_elf_object(&self) -> Vec<u8> {
+        let (format, entry_name) = if cfg!(target_os = "windows") {
+            (object::BinaryFormat::Coff, "WinMain")
+        } else if cfg!(target_os = "linux") {
+            (object::BinaryFormat::Elf, "_start")
+        } else {
+            unimplemented!("Only Linux and Windows are implemented")
+        };
+        let entry_name = entry_name.as_bytes();
+
         let mut obj = object::write::Object::new(
-            object::BinaryFormat::Elf,
+            format,
             object::Architecture::X86_64,
             object::Endianness::Little,
         );
@@ -152,7 +161,7 @@ impl Program {
             })
         };
 
-        let start = add_symbol(b"_start");
+        let start = add_symbol(entry_name);
         let bf_write = add_symbol(b"bf_write");
         let bf_read = add_symbol(b"bf_read");
         let bf_exit = add_symbol(b"bf_exit");
